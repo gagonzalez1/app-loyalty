@@ -97,6 +97,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RegisterCustomerEnvelope' }
+        '403': { $ref: '#/components/responses/DemoSignupClosed' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
         '429': { $ref: '#/components/responses/RateLimited' }
@@ -248,7 +249,12 @@ paths:
     post:
       tags: [Auth]
       operationId: loginGoogle
-      summary: Inicia sesión con un ID token de Google verificado
+      summary: Inicia sesión o crea una cuenta elegida con un ID token de Google verificado
+      description: |
+        Para una cuenta existente basta `id_token`; `account_type` y `merchant_registration`
+        se ignoran y nunca convierten la cuenta. Una identidad nueva debe indicar
+        `CLIENTE_FINAL` o `PERSONAL_MARCA`. El alta `PERSONAL_MARCA` provisiona en una
+        transacción la marca, membresía PROPIETARIO, sucursal, programa y acceso demo $0.
       security: []
       x-puntazo-implementation: IMPLEMENTED
       parameters:
@@ -264,7 +270,9 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AuthEnvelope' }
+        '403': { $ref: '#/components/responses/DemoSignupClosed' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
+        '422': { $ref: '#/components/responses/ValidationError' }
         '429': { $ref: '#/components/responses/RateLimited' }
   /auth/refresh:
     post:
@@ -992,7 +1000,7 @@ components:
           properties:
             code:
               type: string
-              enum: [INVALID_REQUEST, IDENTITY_TOKEN_INVALID, INVITATION_INVALID, INVITATION_EMAIL_MISMATCH, SELF_ROLE_CHANGE_FORBIDDEN, EMAIL_VERIFICATION_REQUIRED, UNAUTHENTICATED, RECENT_AUTH_REQUIRED, FORBIDDEN, NOT_FOUND, EMAIL_EXISTS, RESOURCE_CONFLICT, PROGRAM_TYPE_HAS_BENEFITS, PROGRAM_TYPE_IMMUTABLE, IDEMPOTENCY_CONFLICT, IDEMPOTENCY_IN_PROGRESS, PREVIEW_EXPIRED, PREVIEW_CONSUMED, PREVIEW_CHANGED, PRECONDITION_FAILED, OWNERSHIP_TRANSFER_REQUIRED, INSUFFICIENT_BALANCE, DEMO_SIGNUP_DISABLED, DEMO_ACCESS_DENIED, MEDIA_TOO_LARGE, MEDIA_TYPE_UNSUPPORTED, MEDIA_STORAGE_UNAVAILABLE, RATE_LIMITED, DEPENDENCY_UNAVAILABLE, INTERNAL_ERROR]
+              enum: [INVALID_REQUEST, ACCOUNT_TYPE_REQUIRED, IDENTITY_TOKEN_INVALID, INVITATION_INVALID, INVITATION_EMAIL_MISMATCH, SELF_ROLE_CHANGE_FORBIDDEN, EMAIL_VERIFICATION_REQUIRED, UNAUTHENTICATED, RECENT_AUTH_REQUIRED, FORBIDDEN, NOT_FOUND, EMAIL_EXISTS, RESOURCE_CONFLICT, PROGRAM_TYPE_HAS_BENEFITS, PROGRAM_TYPE_IMMUTABLE, IDEMPOTENCY_CONFLICT, IDEMPOTENCY_IN_PROGRESS, PREVIEW_EXPIRED, PREVIEW_CONSUMED, PREVIEW_CHANGED, PRECONDITION_FAILED, OWNERSHIP_TRANSFER_REQUIRED, INSUFFICIENT_BALANCE, DEMO_SIGNUP_DISABLED, DEMO_ACCESS_DENIED, MEDIA_TOO_LARGE, MEDIA_TYPE_UNSUPPORTED, MEDIA_STORAGE_UNAVAILABLE, RATE_LIMITED, DEPENDENCY_UNAVAILABLE, INTERNAL_ERROR]
             message: { type: string }
             details: { type: object, additionalProperties: true }
         request_id: { $ref: '#/components/schemas/RequestId' }
@@ -1193,6 +1201,22 @@ components:
       required: [id_token]
       properties:
         id_token: { type: string, minLength: 1 }
+        account_type: { $ref: '#/components/schemas/AccountType' }
+        merchant_registration: { $ref: '#/components/schemas/GoogleMerchantRegistration' }
+    GoogleMerchantRegistration:
+      type: object
+      additionalProperties: false
+      required: [brand_name, branch_name, program_type, access_code]
+      properties:
+        brand_name: { type: string, minLength: 1, maxLength: 120 }
+        branch_name: { type: string, minLength: 1, maxLength: 120 }
+        branch_address: { type: string, maxLength: 240 }
+        program_type: { type: string, enum: [SELLOS, PUNTOS] }
+        access_code:
+          type: string
+          minLength: 12
+          maxLength: 128
+          description: Se compara contra bcrypt y nunca se persiste ni registra en claro
     CreateInvitationRequest:
       type: object
       additionalProperties: false

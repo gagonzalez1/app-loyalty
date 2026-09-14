@@ -6,8 +6,24 @@ import (
 	"testing"
 	"time"
 
+	"clientesFrecuentes/internal/config"
 	"clientesFrecuentes/internal/model"
+
+	"golang.org/x/crypto/bcrypt"
 )
+
+func TestRegisterCustomerRejectsWhenDemoSignupIsDisabled(t *testing.T) {
+	svc := &Service{Config: config.Config{DemoSignupEnabled: false}}
+
+	_, err := svc.RegisterCustomer(context.Background(), model.RegisterCustomerRequest{
+		Email:    "customer@example.com",
+		Password: "customer-pass",
+		Name:     "Customer",
+	})
+	if !errors.Is(err, ErrDemoDisabled) {
+		t.Fatalf("error = %v, want %v", err, ErrDemoDisabled)
+	}
+}
 
 func TestValidPasswordHonorsBcryptByteLimit(t *testing.T) {
 	tests := []struct {
@@ -71,5 +87,38 @@ func TestUpdateOperatorRequiresAtLeastOneAssignedBranch(t *testing.T) {
 	_, err := svc.UpdateStaff(context.Background(), 1, 2, 3, 1, model.UpdateStaffRequest{Role: &role, BranchIDs: &empty})
 	if !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("error=%v", err)
+	}
+}
+
+func TestValidateGoogleMerchantNormalizesAcceptedRegistration(t *testing.T) {
+	hash, err := bcrypt.GenerateFromPassword([]byte("demo-access-code"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := "  Calle 123  "
+	svc := &Service{Config: config.Config{DemoAccessCodeHash: string(hash)}}
+	got, err := svc.validateGoogleMerchant(&model.GoogleMerchantRegistration{
+		BrandName: "  Mi Marca  ", BranchName: "  Principal  ", BranchAddress: &address,
+		ProgramType: " puntos ", AccessCode: "demo-access-code",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.BrandName != "Mi Marca" || got.BranchName != "Principal" || got.BranchAddress == nil || *got.BranchAddress != "Calle 123" || got.ProgramType != "PUNTOS" || got.AccessCode != "" {
+		t.Fatalf("normalized registration=%+v", got)
+	}
+}
+
+func TestValidateGoogleMerchantRejectsMissingAndInvalidAccess(t *testing.T) {
+	hash, err := bcrypt.GenerateFromPassword([]byte("demo-access-code"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := &Service{Config: config.Config{DemoAccessCodeHash: string(hash)}}
+	if _, err = svc.validateGoogleMerchant(nil); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("missing registration error=%v", err)
+	}
+	if _, err = svc.validateGoogleMerchant(&model.GoogleMerchantRegistration{BrandName: "Marca", BranchName: "Principal", ProgramType: "SELLOS", AccessCode: "wrong-access-code"}); !errors.Is(err, ErrDemoAccess) {
+		t.Fatalf("invalid access error=%v", err)
 	}
 }
