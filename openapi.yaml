@@ -97,6 +97,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RegisterCustomerEnvelope' }
+        '403': { $ref: '#/components/responses/DemoSignupClosed' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
         '429': { $ref: '#/components/responses/RateLimited' }
