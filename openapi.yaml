@@ -255,6 +255,12 @@ paths:
         se ignoran y nunca convierten la cuenta. Una identidad nueva debe indicar
         `CLIENTE_FINAL` o `PERSONAL_MARCA`. El alta `PERSONAL_MARCA` provisiona en una
         transacción la marca, membresía PROPIETARIO, sucursal, programa y acceso demo $0.
+        Si una identidad Google verificada es nueva y omite `account_type`, no se crea
+        usuario, sesión ni recurso comercial: se devuelve `422 ACCOUNT_TYPE_REQUIRED`
+        con `details.next_action=SELECT_ACCOUNT_TYPE`. El cliente debe conservar el
+        `id_token` sólo en memoria y reenviarlo después de la elección; si Google ya no
+        lo valida, debe comenzar una autenticación nueva. El alias temporal
+        `POST /auth/google` conserva este mismo error y reglas de selección.
       security: []
       x-puntazo-implementation: IMPLEMENTED
       parameters:
@@ -272,7 +278,7 @@ paths:
               schema: { $ref: '#/components/schemas/AuthEnvelope' }
         '403': { $ref: '#/components/responses/DemoSignupClosed' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
-        '422': { $ref: '#/components/responses/ValidationError' }
+        '422': { $ref: '#/components/responses/GoogleAuthValidationError' }
         '429': { $ref: '#/components/responses/RateLimited' }
   /auth/refresh:
     post:
@@ -956,6 +962,16 @@ components:
     ValidationError:
       description: Request válido como JSON pero inválido para el contrato
       content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    GoogleAuthValidationError:
+      description: |
+        Request inválido o identidad Google verificada que requiere elegir el tipo de
+        cuenta antes de realizar cualquier escritura o emitir una sesión.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/AccountTypeRequiredErrorEnvelope'
+              - $ref: '#/components/schemas/InvalidRequestErrorEnvelope'
     RateLimited:
       description: Límite por IP, email u operador excedido
       headers:
@@ -1003,6 +1019,38 @@ components:
               enum: [INVALID_REQUEST, ACCOUNT_TYPE_REQUIRED, IDENTITY_TOKEN_INVALID, INVITATION_INVALID, INVITATION_EMAIL_MISMATCH, SELF_ROLE_CHANGE_FORBIDDEN, EMAIL_VERIFICATION_REQUIRED, UNAUTHENTICATED, RECENT_AUTH_REQUIRED, FORBIDDEN, NOT_FOUND, EMAIL_EXISTS, RESOURCE_CONFLICT, PROGRAM_TYPE_HAS_BENEFITS, PROGRAM_TYPE_IMMUTABLE, IDEMPOTENCY_CONFLICT, IDEMPOTENCY_IN_PROGRESS, PREVIEW_EXPIRED, PREVIEW_CONSUMED, PREVIEW_CHANGED, PRECONDITION_FAILED, OWNERSHIP_TRANSFER_REQUIRED, INSUFFICIENT_BALANCE, DEMO_SIGNUP_DISABLED, DEMO_ACCESS_DENIED, MEDIA_TOO_LARGE, MEDIA_TYPE_UNSUPPORTED, MEDIA_STORAGE_UNAVAILABLE, RATE_LIMITED, DEPENDENCY_UNAVAILABLE, INTERNAL_ERROR]
             message: { type: string }
             details: { type: object, additionalProperties: true }
+        request_id: { $ref: '#/components/schemas/RequestId' }
+    AccountTypeRequiredErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error, request_id]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, details]
+          properties:
+            code: { type: string, const: ACCOUNT_TYPE_REQUIRED }
+            message: { type: string }
+            details:
+              type: object
+              additionalProperties: false
+              required: [next_action]
+              properties:
+                next_action: { type: string, const: SELECT_ACCOUNT_TYPE }
+        request_id: { $ref: '#/components/schemas/RequestId' }
+    InvalidRequestErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error, request_id]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { type: string, const: INVALID_REQUEST }
+            message: { type: string }
         request_id: { $ref: '#/components/schemas/RequestId' }
     MessageEnvelope:
       type: object

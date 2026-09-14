@@ -96,6 +96,29 @@ El despliegue debe proporcionar el SHA real de la revisión construida en
 La API informa esa etiqueta; no verifica por sí misma el contenido del binario.
 Configurar la versión de esquema no aplica migraciones.
 
+## Primer acceso con Google
+
+`POST /v1/auth/google` y el alias temporal `POST /auth/google` validan primero el
+`id_token`. Si la identidad corresponde a una cuenta existente, emiten la sesión
+con el `tipo_cuenta` persistido; cualquier `account_type` o
+`merchant_registration` recibido se ignora y no puede convertirla.
+
+Para una identidad Google verificada y nueva, una primera petición que envía sólo
+`id_token` responde `422 ACCOUNT_TYPE_REQUIRED` con
+`details.next_action=SELECT_ACCOUNT_TYPE`. Esa respuesta no crea usuario, sesión,
+QR, marca, membresía, sucursal ni programa. La API tampoco entrega un token
+intermedio: el frontend conserva el mismo ID token únicamente en memoria y lo
+reenvía con una de estas variantes:
+
+- `account_type=CLIENTE_FINAL`, sin `merchant_registration`, crea el cliente y su QR;
+- `account_type=PERSONAL_MARCA`, junto con un `merchant_registration` válido, crea
+  atómicamente usuario, marca, propietario, sucursal, programa y acceso demo.
+
+Un ID token inválido o vencido responde `401 UNAUTHENTICATED`; el cliente debe
+reiniciar el acceso con Google. Las altas cerradas y el código comercial inválido
+fallan antes de confirmar datos parciales. Este flujo usa las rutas y tablas
+existentes y no requiere una migración.
+
 ## Verificación
 
 ```bash

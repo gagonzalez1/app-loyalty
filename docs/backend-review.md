@@ -51,6 +51,20 @@ La validación Google recibe el contexto HTTP. La biblioteca puede descargar las
 claves públicas cuando su caché debe renovarse; el contexto permite cancelar ese
 trabajo. No modifica el contenido ni los permisos del token.
 
+El primer acceso Google separa validación de identidad y creación. Una identidad
+verificada que todavía no existe y omite `account_type` recibe
+`422 ACCOUNT_TYPE_REQUIRED` y `details.next_action=SELECT_ACCOUNT_TYPE`; el
+servicio no crea usuario ni sesión y, por integridad referencial, tampoco QR,
+marca, membresía, sucursal o programa. El reenvío del mismo `id_token` como
+`CLIENTE_FINAL` usa el alta de cliente, mientras que `PERSONAL_MARCA` exige los
+datos comerciales y confirma todo el grafo en una transacción serializable.
+
+La resolución de una cuenta existente ocurre antes de interpretar la selección:
+su `tipo_cuenta` se conserva incluso si llegan `account_type` o datos comerciales
+contradictorios. El alias `/auth/google` comparte el mismo servicio y mapeo de
+errores que `/v1/auth/google`. No se persiste un estado pendiente ni se introduce
+una migración para este flujo.
+
 Los tokens del backend legacy usaban `sub` numérico y `rol`; Sellos usa `sub`
 textual, `account_type`, emisor y audiencia con validaciones explícitas. Los
 usuarios anteriores deben volver a iniciar sesión. Esta reorganización no vuelve
