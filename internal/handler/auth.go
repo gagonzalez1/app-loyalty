@@ -120,7 +120,7 @@ func (h *Handler) LoginGoogle(c *gin.Context) {
 	if !h.limit(c, "login-google:ip:"+h.clientIP(c), loginAttempts, loginWindow) {
 		return
 	}
-	data, err := h.Service.LoginGoogle(c.Request.Context(), req.IDToken)
+	data, err := h.Service.LoginGoogle(c.Request.Context(), req)
 	if err != nil {
 		writeErr(c, err)
 		return

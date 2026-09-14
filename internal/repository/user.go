@@ -56,6 +56,22 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (AuthUser
 }
 
 func (r *Repository) LoginGoogle(ctx context.Context, googleID, email, name string, allowSignup bool, provisionalQRHash []byte, finalQRHash func(int64) []byte) (model.User, error) {
+	u, err := r.ResolveGoogleUser(ctx, googleID, email)
+	if err == nil {
+		return u, nil
+	}
+	if !errors.Is(err, ErrNotFound) {
+		return model.User{}, err
+	}
+	if !allowSignup {
+		return model.User{}, ErrSignupDisabled
+	}
+	return r.CreateGoogleCustomer(ctx, googleID, email, name, provisionalQRHash, finalQRHash)
+}
+
+// ResolveGoogleUser logs in an already linked account or links Google to the
+// active account with the same verified email. It never creates an account.
+func (r *Repository) ResolveGoogleUser(ctx context.Context, googleID, email string) (model.User, error) {
 	tx, err := r.Pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return model.User{}, err
@@ -86,9 +102,16 @@ func (r *Repository) LoginGoogle(ctx context.Context, googleID, email, name stri
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return model.User{}, err
 	}
-	if !allowSignup {
-		return model.User{}, ErrSignupDisabled
+	return model.User{}, ErrNotFound
+}
+
+func (r *Repository) CreateGoogleCustomer(ctx context.Context, googleID, email, name string, provisionalQRHash []byte, finalQRHash func(int64) []byte) (model.User, error) {
+	tx, err := r.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	if err != nil {
+		return model.User{}, err
 	}
+	defer tx.Rollback(ctx)
+	var u model.User
 	err = tx.QueryRow(ctx, `INSERT INTO usuarios(email,google_id,nombre,tipo_cuenta,qr_hash,email_verified_at) VALUES($1,$2,$3,'CLIENTE_FINAL',$4,now()) RETURNING id,email::text,nombre,apellido,alias,foto_url,tipo_cuenta,activo,true,auth_version,version,created_at`, email, googleID, name, provisionalQRHash).Scan(&u.ID, &u.Email, &u.Name, &u.LastName, &u.Alias, &u.PhotoURL, &u.AccountType, &u.Active, &u.EmailVerified, &u.AuthVersion, &u.Version, &u.CreatedAt)
 	if err != nil {
 		return model.User{}, normalize(err)
