@@ -254,19 +254,51 @@ func TestPostgresDemoSellosLifecycle(t *testing.T) {
 	}
 	clientAccountType := "CLIENTE_FINAL"
 	merchantAccountType := "PERSONAL_MARCA"
+	type googleProvisioningState struct {
+		users, sessions, brands, memberships, branches, branchMemberships, programs, benefits, demoAccesses, cards int
+	}
+	provisioningState := func() googleProvisioningState {
+		t.Helper()
+		var state googleProvisioningState
+		err := pool.QueryRow(ctx, `SELECT
+			(SELECT count(*) FROM usuarios),
+			(SELECT count(*) FROM sesiones_auth),
+			(SELECT count(*) FROM marcas),
+			(SELECT count(*) FROM membresias_marca),
+			(SELECT count(*) FROM sucursales),
+			(SELECT count(*) FROM membresias_sucursales),
+			(SELECT count(*) FROM programas_fidelidad),
+			(SELECT count(*) FROM beneficios),
+			(SELECT count(*) FROM accesos_demo),
+			(SELECT count(*) FROM tarjetas)`).Scan(
+			&state.users, &state.sessions, &state.brands, &state.memberships,
+			&state.branches, &state.branchMemberships, &state.programs,
+			&state.benefits, &state.demoAccesses, &state.cards,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return state
+	}
+	beforeAccountSelection := provisioningState()
 	if _, err = svc.LoginGoogle(ctx, model.GoogleAuthRequest{IDToken: "needs-type"}); !errors.Is(err, service.ErrAccountTypeRequired) {
 		t.Fatalf("new Google account without type error=%v", err)
 	}
-	var googleMissingUsers int
-	if err = pool.QueryRow(ctx, `SELECT count(*) FROM usuarios WHERE email='needs-type@example.com'`).Scan(&googleMissingUsers); err != nil || googleMissingUsers != 0 {
-		t.Fatalf("missing-type Google users=%d err=%v", googleMissingUsers, err)
+	if afterAccountSelection := provisioningState(); afterAccountSelection != beforeAccountSelection {
+		t.Fatalf("missing account type changed provisioning state: before=%+v after=%+v", beforeAccountSelection, afterAccountSelection)
 	}
 	googleClient, err := svc.LoginGoogle(ctx, model.GoogleAuthRequest{IDToken: "new-client", AccountType: &clientAccountType})
 	if err != nil || googleClient.User.AccountType != "CLIENTE_FINAL" || !googleClient.User.EmailVerified {
 		t.Fatalf("Google client=%+v err=%v", googleClient.User, err)
 	}
 	// Selection fields are ignored for an existing account and cannot convert it.
-	existingClient, err := svc.LoginGoogle(ctx, model.GoogleAuthRequest{IDToken: "new-client", AccountType: &merchantAccountType})
+	existingClient, err := svc.LoginGoogle(ctx, model.GoogleAuthRequest{
+		IDToken:     "new-client",
+		AccountType: &merchantAccountType,
+		MerchantRegistration: &model.GoogleMerchantRegistration{
+			BrandName: "Must be ignored", ProgramType: "INVALID", AccessCode: "invalid-code-value",
+		},
+	})
 	if err != nil || existingClient.User.ID != googleClient.User.ID || existingClient.User.AccountType != "CLIENTE_FINAL" {
 		t.Fatalf("existing Google client=%+v err=%v", existingClient.User, err)
 	}
