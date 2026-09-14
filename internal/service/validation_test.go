@@ -6,8 +6,22 @@ import (
 	"testing"
 	"time"
 
+	"clientesFrecuentes/internal/config"
 	"clientesFrecuentes/internal/model"
 )
+
+func TestRegisterCustomerRejectsWhenDemoSignupIsDisabled(t *testing.T) {
+	svc := &Service{Config: config.Config{DemoSignupEnabled: false}}
+
+	_, err := svc.RegisterCustomer(context.Background(), model.RegisterCustomerRequest{
+		Email:    "customer@example.com",
+		Password: "customer-pass",
+		Name:     "Customer",
+	})
+	if !errors.Is(err, ErrDemoDisabled) {
+		t.Fatalf("error = %v, want %v", err, ErrDemoDisabled)
+	}
+}
 
 func TestValidPasswordHonorsBcryptByteLimit(t *testing.T) {
 	tests := []struct {

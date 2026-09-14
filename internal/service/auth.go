@@ -28,6 +28,9 @@ type sessionCredentials struct {
 }
 
 func (s *Service) RegisterCustomer(ctx context.Context, req model.RegisterCustomerRequest) (model.RegisterCustomerData, error) {
+	if !s.Config.DemoSignupEnabled {
+		return model.RegisterCustomerData{}, ErrDemoDisabled
+	}
 	email, err := normalizeEmail(req.Email)
 	if err != nil || !validPassword(req.Password) {
 		return model.RegisterCustomerData{}, ErrInvalidRequest

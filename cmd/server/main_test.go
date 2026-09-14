@@ -69,3 +69,43 @@ func TestStrictJSONRejectsUnknownAndOversized(t *testing.T) {
 		t.Fatalf("large status %d", w.Code)
 	}
 }
+
+func TestCustomerRegistrationIsClosedWhenDemoSignupIsDisabled(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	h := &handler.Handler{
+		Service: &service.Service{Config: config.Config{DemoSignupEnabled: false}},
+		Limiter: middleware.NewRateLimiter(),
+		Logger:  logger,
+	}
+	r := newRouter(h, auth.NewTokens("01234567890123456789012345678901", "puntazo"), logger)
+
+	for _, path := range []string{"/v1/auth/register", "/auth/register"} {
+		t.Run(path, func(t *testing.T) {
+			requestBody := `{"email":"customer@example.com","password":"customer-pass","name":"Customer"}`
+			if path == "/auth/register" {
+				requestBody = `{"email":"customer@example.com","password":"customer-pass","nombre":"Customer"}`
+			}
+			req := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(requestBody))
+			req.Header.Set("Content-Type", "application/json")
+			if path == "/v1/auth/register" {
+				req.Header.Set("X-Client-Platform", "native")
+			}
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			if w.Code != http.StatusForbidden {
+				t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+			}
+			var responseBody struct {
+				Error struct {
+					Code string `json:"code"`
+				} `json:"error"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &responseBody); err != nil {
+				t.Fatal(err)
+			}
+			if responseBody.Error.Code != "DEMO_SIGNUP_DISABLED" {
+				t.Fatalf("error code = %q", responseBody.Error.Code)
+			}
+		})
+	}
+}
