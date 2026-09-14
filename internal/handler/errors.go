@@ -22,7 +22,7 @@ func writeErr(c *gin.Context, err error) {
 	case errors.Is(err, service.ErrInvalidRequest), errors.Is(err, repository.ErrInvalidRequest):
 		web.Error(c, http.StatusUnprocessableEntity, "INVALID_REQUEST", "Solicitud inválida", nil)
 	case errors.Is(err, service.ErrAccountTypeRequired):
-		web.Error(c, http.StatusUnprocessableEntity, "ACCOUNT_TYPE_REQUIRED", "Elegí si la cuenta es cliente o comercio", nil)
+		web.Error(c, http.StatusUnprocessableEntity, "ACCOUNT_TYPE_REQUIRED", "Elegí si la cuenta es cliente o comercio", map[string]any{"next_action": "SELECT_ACCOUNT_TYPE"})
 	case errors.Is(err, service.ErrInvalidCredentials):
 		web.Error(c, http.StatusUnauthorized, "UNAUTHENTICATED", "Credenciales inválidas", nil)
 	case errors.Is(err, service.ErrRecentAuthRequired):
