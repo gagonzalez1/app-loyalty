@@ -226,6 +226,26 @@ func TestPostgresDemoSellosLifecycle(t *testing.T) {
 	outboxKey := []byte("01234567890123456789012345678901")
 	cfg := config.Config{JWTSecret: "jwt-secret-0123456789012345678901", JWTIssuer: "puntazo", QRPepper: "qr-pepper-01234567890123456789012", DemoAccessCodeHash: string(demoHash), DemoSignupEnabled: true, ExpectedSchemaVersion: "0017", PublicAppURL: "https://app.puntazo.test", OutboxEncryptionKey: outboxKey, MediaURLTTL: 5 * time.Minute}
 	repo := repository.New(pool, outboxKey)
+	blockedGoogleID := "blocked-google-signup"
+	blockedGoogleEmail := "blocked-google@example.com"
+	if _, err = repo.LoginGoogle(ctx, blockedGoogleID, blockedGoogleEmail, "Blocked Google", false, make([]byte, 32), func(int64) []byte { return make([]byte, 32) }); !errors.Is(err, repository.ErrSignupDisabled) {
+		t.Fatalf("disabled Google signup error=%v", err)
+	}
+	var blockedGoogleUsers int
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM usuarios WHERE email=$1 OR google_id=$2`, blockedGoogleEmail, blockedGoogleID).Scan(&blockedGoogleUsers); err != nil || blockedGoogleUsers != 0 {
+		t.Fatalf("disabled Google signup created users=%d err=%v", blockedGoogleUsers, err)
+	}
+	if _, err = repo.LoginGoogle(ctx, "legacy-google", "legacy-google@example.com", "Legacy Google", false, make([]byte, 32), func(int64) []byte { return make([]byte, 32) }); err != nil {
+		t.Fatalf("existing Google login blocked while signup disabled: %v", err)
+	}
+	if _, err = repo.LoginGoogle(ctx, "legacy-password-google", "legacy-password@example.com", "Legacy password", false, make([]byte, 32), func(int64) []byte { return make([]byte, 32) }); err != nil {
+		t.Fatalf("existing email link blocked while signup disabled: %v", err)
+	}
+	var linkedGoogleID string
+	var linkedEmailVerified bool
+	if err = pool.QueryRow(ctx, `SELECT google_id,email_verified_at IS NOT NULL FROM usuarios WHERE email='legacy-password@example.com'`).Scan(&linkedGoogleID, &linkedEmailVerified); err != nil || linkedGoogleID != "legacy-password-google" || !linkedEmailVerified {
+		t.Fatalf("existing email link google_id=%q verified=%t err=%v", linkedGoogleID, linkedEmailVerified, err)
+	}
 	tokens := auth.NewTokens(cfg.JWTSecret, cfg.JWTIssuer)
 	media := &fakeMediaStore{objects: map[string][]byte{}}
 	svc := service.New(repo, tokens, cfg, media)

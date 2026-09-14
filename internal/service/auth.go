@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"strings"
 	"time"
 
@@ -122,7 +123,10 @@ func (s *Service) LoginGoogle(ctx context.Context, idToken string) (model.AuthDa
 	if _, err = rand.Read(provisional); err != nil {
 		return model.AuthData{}, err
 	}
-	u, err := s.Repo.LoginGoogle(ctx, googleID, email, name, provisional, func(id int64) []byte { _, hash := s.QRForUser(id); return hash })
+	u, err := s.Repo.LoginGoogle(ctx, googleID, email, name, s.Config.DemoSignupEnabled, provisional, func(id int64) []byte { _, hash := s.QRForUser(id); return hash })
+	if errors.Is(err, repository.ErrSignupDisabled) {
+		return model.AuthData{}, ErrDemoDisabled
+	}
 	if err != nil {
 		return model.AuthData{}, err
 	}

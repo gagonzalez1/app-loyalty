@@ -55,7 +55,7 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (AuthUser
 	return u, err
 }
 
-func (r *Repository) LoginGoogle(ctx context.Context, googleID, email, name string, provisionalQRHash []byte, finalQRHash func(int64) []byte) (model.User, error) {
+func (r *Repository) LoginGoogle(ctx context.Context, googleID, email, name string, allowSignup bool, provisionalQRHash []byte, finalQRHash func(int64) []byte) (model.User, error) {
 	tx, err := r.Pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return model.User{}, err
@@ -85,6 +85,9 @@ func (r *Repository) LoginGoogle(ctx context.Context, googleID, email, name stri
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return model.User{}, err
+	}
+	if !allowSignup {
+		return model.User{}, ErrSignupDisabled
 	}
 	err = tx.QueryRow(ctx, `INSERT INTO usuarios(email,google_id,nombre,tipo_cuenta,qr_hash,email_verified_at) VALUES($1,$2,$3,'CLIENTE_FINAL',$4,now()) RETURNING id,email::text,nombre,apellido,alias,foto_url,tipo_cuenta,activo,true,auth_version,version,created_at`, email, googleID, name, provisionalQRHash).Scan(&u.ID, &u.Email, &u.Name, &u.LastName, &u.Alias, &u.PhotoURL, &u.AccountType, &u.Active, &u.EmailVerified, &u.AuthVersion, &u.Version, &u.CreatedAt)
 	if err != nil {

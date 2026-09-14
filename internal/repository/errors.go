@@ -25,6 +25,7 @@ var (
 	ErrProgramTypeHasBenefits  = errors.New("program type has benefits")
 	ErrSelfRoleChangeForbidden = errors.New("self role change forbidden")
 	ErrAccountModeConflict     = errors.New("account mode conflict")
+	ErrSignupDisabled          = errors.New("signup disabled")
 )
 
 func normalize(err error) error {
