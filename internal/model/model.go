@@ -29,7 +29,16 @@ type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
 type GoogleAuthRequest struct {
-	IDToken string `json:"id_token"`
+	IDToken              string                      `json:"id_token"`
+	AccountType          *string                     `json:"account_type,omitempty"`
+	MerchantRegistration *GoogleMerchantRegistration `json:"merchant_registration,omitempty"`
+}
+type GoogleMerchantRegistration struct {
+	BrandName     string  `json:"brand_name"`
+	BranchName    string  `json:"branch_name"`
+	BranchAddress *string `json:"branch_address,omitempty"`
+	ProgramType   string  `json:"program_type"`
+	AccessCode    string  `json:"access_code"`
 }
 
 type User struct {

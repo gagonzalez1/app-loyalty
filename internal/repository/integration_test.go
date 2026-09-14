@@ -226,9 +226,163 @@ func TestPostgresDemoSellosLifecycle(t *testing.T) {
 	outboxKey := []byte("01234567890123456789012345678901")
 	cfg := config.Config{JWTSecret: "jwt-secret-0123456789012345678901", JWTIssuer: "puntazo", QRPepper: "qr-pepper-01234567890123456789012", DemoAccessCodeHash: string(demoHash), DemoSignupEnabled: true, ExpectedSchemaVersion: "0017", PublicAppURL: "https://app.puntazo.test", OutboxEncryptionKey: outboxKey, MediaURLTTL: 5 * time.Minute}
 	repo := repository.New(pool, outboxKey)
+	blockedGoogleID := "blocked-google-signup"
+	blockedGoogleEmail := "blocked-google@example.com"
+	if _, err = repo.LoginGoogle(ctx, blockedGoogleID, blockedGoogleEmail, "Blocked Google", false, make([]byte, 32), func(int64) []byte { return make([]byte, 32) }); !errors.Is(err, repository.ErrSignupDisabled) {
+		t.Fatalf("disabled Google signup error=%v", err)
+	}
+	var blockedGoogleUsers int
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM usuarios WHERE email=$1 OR google_id=$2`, blockedGoogleEmail, blockedGoogleID).Scan(&blockedGoogleUsers); err != nil || blockedGoogleUsers != 0 {
+		t.Fatalf("disabled Google signup created users=%d err=%v", blockedGoogleUsers, err)
+	}
+	if _, err = repo.LoginGoogle(ctx, "legacy-google", "legacy-google@example.com", "Legacy Google", false, make([]byte, 32), func(int64) []byte { return make([]byte, 32) }); err != nil {
+		t.Fatalf("existing Google login blocked while signup disabled: %v", err)
+	}
+	if _, err = repo.LoginGoogle(ctx, "legacy-password-google", "legacy-password@example.com", "Legacy password", false, make([]byte, 32), func(int64) []byte { return make([]byte, 32) }); err != nil {
+		t.Fatalf("existing email link blocked while signup disabled: %v", err)
+	}
+	var linkedGoogleID string
+	var linkedEmailVerified bool
+	if err = pool.QueryRow(ctx, `SELECT google_id,email_verified_at IS NOT NULL FROM usuarios WHERE email='legacy-password@example.com'`).Scan(&linkedGoogleID, &linkedEmailVerified); err != nil || linkedGoogleID != "legacy-password-google" || !linkedEmailVerified {
+		t.Fatalf("existing email link google_id=%q verified=%t err=%v", linkedGoogleID, linkedEmailVerified, err)
+	}
 	tokens := auth.NewTokens(cfg.JWTSecret, cfg.JWTIssuer)
 	media := &fakeMediaStore{objects: map[string][]byte{}}
 	svc := service.New(repo, tokens, cfg, media)
+	svc.VerifyGoogleToken = func(_ context.Context, token string) (string, string, string, error) {
+		return "gid-" + token, token + "@example.com", "Google " + token, nil
+	}
+	clientAccountType := "CLIENTE_FINAL"
+	merchantAccountType := "PERSONAL_MARCA"
+	type googleProvisioningState struct {
+		users, sessions, brands, memberships, branches, branchMemberships, programs, benefits, demoAccesses, cards int
+	}
+	provisioningState := func() googleProvisioningState {
+		t.Helper()
+		var state googleProvisioningState
+		err := pool.QueryRow(ctx, `SELECT
+			(SELECT count(*) FROM usuarios),
+			(SELECT count(*) FROM sesiones_auth),
+			(SELECT count(*) FROM marcas),
+			(SELECT count(*) FROM membresias_marca),
+			(SELECT count(*) FROM sucursales),
+			(SELECT count(*) FROM membresias_sucursales),
+			(SELECT count(*) FROM programas_fidelidad),
+			(SELECT count(*) FROM beneficios),
+			(SELECT count(*) FROM accesos_demo),
+			(SELECT count(*) FROM tarjetas)`).Scan(
+			&state.users, &state.sessions, &state.brands, &state.memberships,
+			&state.branches, &state.branchMemberships, &state.programs,
+			&state.benefits, &state.demoAccesses, &state.cards,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return state
+	}
+	beforeAccountSelection := provisioningState()
+	if _, err = svc.LoginGoogle(ctx, model.GoogleAuthRequest{IDToken: "needs-type"}); !errors.Is(err, service.ErrAccountTypeRequired) {
+		t.Fatalf("new Google account without type error=%v", err)
+	}
+	if afterAccountSelection := provisioningState(); afterAccountSelection != beforeAccountSelection {
+		t.Fatalf("missing account type changed provisioning state: before=%+v after=%+v", beforeAccountSelection, afterAccountSelection)
+	}
+	googleClient, err := svc.LoginGoogle(ctx, model.GoogleAuthRequest{IDToken: "new-client", AccountType: &clientAccountType})
+	if err != nil || googleClient.User.AccountType != "CLIENTE_FINAL" || !googleClient.User.EmailVerified {
+		t.Fatalf("Google client=%+v err=%v", googleClient.User, err)
+	}
+	// Selection fields are ignored for an existing account and cannot convert it.
+	existingClient, err := svc.LoginGoogle(ctx, model.GoogleAuthRequest{
+		IDToken:     "new-client",
+		AccountType: &merchantAccountType,
+		MerchantRegistration: &model.GoogleMerchantRegistration{
+			BrandName: "Must be ignored", ProgramType: "INVALID", AccessCode: "invalid-code-value",
+		},
+	})
+	if err != nil || existingClient.User.ID != googleClient.User.ID || existingClient.User.AccountType != "CLIENTE_FINAL" {
+		t.Fatalf("existing Google client=%+v err=%v", existingClient.User, err)
+	}
+	badMerchant := &model.GoogleMerchantRegistration{BrandName: "Bad Google Brand", BranchName: "Principal", ProgramType: "SELLOS", AccessCode: "invalid-code-value"}
+	if _, err = svc.LoginGoogle(ctx, model.GoogleAuthRequest{IDToken: "bad-merchant", AccountType: &merchantAccountType, MerchantRegistration: badMerchant}); !errors.Is(err, service.ErrDemoAccess) {
+		t.Fatalf("Google merchant invalid access error=%v", err)
+	}
+	googleMerchantRegistration := &model.GoogleMerchantRegistration{BrandName: "Google Brand", BranchName: "Casa Central", ProgramType: "PUNTOS", AccessCode: "demo-access-code"}
+	googleMerchant, err := svc.LoginGoogle(ctx, model.GoogleAuthRequest{IDToken: "new-merchant", AccountType: &merchantAccountType, MerchantRegistration: googleMerchantRegistration})
+	if err != nil || googleMerchant.User.AccountType != "PERSONAL_MARCA" || !googleMerchant.User.EmailVerified {
+		t.Fatalf("Google merchant=%+v err=%v", googleMerchant.User, err)
+	}
+	var googleMerchantGraph int
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM usuarios u
+		JOIN membresias_marca mm ON mm.usuario_id=u.id AND mm.rol='PROPIETARIO'
+		JOIN marcas m ON m.id=mm.marca_id AND m.nombre='Google Brand'
+		JOIN sucursales s ON s.marca_id=m.id AND s.nombre='Casa Central' AND s.principal
+		JOIN programas_fidelidad p ON p.marca_id=m.id AND p.tipo='PUNTOS'
+		JOIN accesos_demo ad ON ad.marca_id=m.id AND ad.precio_minor=0 AND NOT ad.cobro_automatico
+		WHERE u.id=$1 AND u.password_hash IS NULL AND u.google_id='gid-new-merchant' AND u.email_verified_at IS NOT NULL`, googleMerchant.User.ID).Scan(&googleMerchantGraph); err != nil || googleMerchantGraph != 1 {
+		t.Fatalf("Google merchant graph=%d err=%v", googleMerchantGraph, err)
+	}
+	existingMerchant, err := svc.LoginGoogle(ctx, model.GoogleAuthRequest{IDToken: "new-merchant", AccountType: &clientAccountType})
+	if err != nil || existingMerchant.User.ID != googleMerchant.User.ID || existingMerchant.User.AccountType != "PERSONAL_MARCA" {
+		t.Fatalf("existing Google merchant=%+v err=%v", existingMerchant.User, err)
+	}
+	disabledGoogleSvc := service.New(repo, tokens, config.Config{DemoSignupEnabled: false, QRPepper: cfg.QRPepper, DemoAccessCodeHash: cfg.DemoAccessCodeHash})
+	disabledGoogleSvc.VerifyGoogleToken = svc.VerifyGoogleToken
+	if _, err = disabledGoogleSvc.LoginGoogle(ctx, model.GoogleAuthRequest{IDToken: "new-client"}); err != nil {
+		t.Fatalf("existing Google login while signup disabled: %v", err)
+	}
+	if _, err = disabledGoogleSvc.LoginGoogle(ctx, model.GoogleAuthRequest{IDToken: "disabled-new", AccountType: &merchantAccountType, MerchantRegistration: googleMerchantRegistration}); !errors.Is(err, service.ErrDemoDisabled) {
+		t.Fatalf("disabled new Google signup error=%v", err)
+	}
+	if _, err = repo.CreateGoogleMerchant(ctx, "gid-rollback", "rollback-google@example.com", "Rollback", "Rollback Brand", "Principal", nil, "INVALID"); err == nil {
+		t.Fatal("invalid direct Google merchant provision unexpectedly succeeded")
+	}
+	var rollbackUsers, rollbackBrands int
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM usuarios WHERE email='rollback-google@example.com'`).Scan(&rollbackUsers); err != nil {
+		t.Fatal(err)
+	}
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM marcas WHERE nombre='Rollback Brand'`).Scan(&rollbackBrands); err != nil || rollbackUsers != 0 || rollbackBrands != 0 {
+		t.Fatalf("rolled back users=%d brands=%d err=%v", rollbackUsers, rollbackBrands, err)
+	}
+	raceRegistration := &model.GoogleMerchantRegistration{BrandName: "Google Race Brand", BranchName: "Principal", ProgramType: "SELLOS", AccessCode: "demo-access-code"}
+	startGoogleRace := make(chan struct{})
+	googleRaceErrors := make(chan error, 8)
+	var googleRace sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		googleRace.Add(1)
+		go func() {
+			defer googleRace.Done()
+			<-startGoogleRace
+			result, loginErr := svc.LoginGoogle(ctx, model.GoogleAuthRequest{IDToken: "race-merchant", AccountType: &merchantAccountType, MerchantRegistration: raceRegistration})
+			if loginErr == nil && result.User.AccountType != "PERSONAL_MARCA" {
+				loginErr = fmt.Errorf("unexpected account type %q", result.User.AccountType)
+			}
+			googleRaceErrors <- loginErr
+		}()
+	}
+	close(startGoogleRace)
+	googleRace.Wait()
+	close(googleRaceErrors)
+	for raceErr := range googleRaceErrors {
+		if raceErr != nil {
+			t.Fatalf("concurrent Google merchant signup: %v", raceErr)
+		}
+	}
+	var raceUsers, raceBrands, raceMemberships, raceBranches, racePrograms, raceAccesses int
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM usuarios WHERE email='race-merchant@example.com'`).Scan(&raceUsers); err != nil {
+		t.Fatal(err)
+	}
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM marcas WHERE nombre='Google Race Brand'`).Scan(&raceBrands); err != nil {
+		t.Fatal(err)
+	}
+	if err = pool.QueryRow(ctx, `SELECT count(DISTINCT mm.id),count(DISTINCT s.id),count(DISTINCT p.id),count(DISTINCT ad.id)
+		FROM marcas m JOIN membresias_marca mm ON mm.marca_id=m.id JOIN sucursales s ON s.marca_id=m.id
+		JOIN programas_fidelidad p ON p.marca_id=m.id JOIN accesos_demo ad ON ad.marca_id=m.id WHERE m.nombre='Google Race Brand'`).
+		Scan(&raceMemberships, &raceBranches, &racePrograms, &raceAccesses); err != nil {
+		t.Fatal(err)
+	}
+	if raceUsers != 1 || raceBrands != 1 || raceMemberships != 1 || raceBranches != 1 || racePrograms != 1 || raceAccesses != 1 {
+		t.Fatalf("race graph users=%d brands=%d memberships=%d branches=%d programs=%d accesses=%d", raceUsers, raceBrands, raceMemberships, raceBranches, racePrograms, raceAccesses)
+	}
 	identityCfg := cfg
 	identityCfg.EmailVerificationRequired = true
 	identitySvc := service.New(repo, tokens, identityCfg)
