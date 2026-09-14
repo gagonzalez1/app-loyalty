@@ -15,7 +15,7 @@ sigue siendo 24 horas; los aliases HTTP legacy no convierten tokens anteriores.
 
 ## Desarrollo local
 
-Requisitos: Go 1.25, Docker y Docker Compose.
+Requisitos: Go 1.25.13, Docker y Docker Compose.
 
 Para levantar PostgreSQL, aplicar las migraciones y arrancar la API con las mismas imágenes usadas en despliegue:
 
