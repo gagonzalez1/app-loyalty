@@ -125,6 +125,10 @@ type OutboxEmail struct {
 	Ciphertext, Nonce        []byte
 	ExpiresAt                time.Time
 	Attempts                 int
+	BrandName                string
+	InvitationRole           string
+	InvitationBranchNames    []string
+	BrandLogoObjectKey       string
 }
 type Membership struct {
 	BrandID   int64   `json:"brand_id"`

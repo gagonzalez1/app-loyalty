@@ -16,6 +16,9 @@ type Worker struct {
 	Interval     time.Duration
 	PublicAppURL string
 	CipherKey    []byte
+	LogoStore    interface {
+		SignedGet(context.Context, string, time.Duration) (string, error)
+	}
 }
 
 func (w Worker) Run(ctx context.Context) {
@@ -59,7 +62,21 @@ func (w Worker) flush(ctx context.Context) {
 		case "RESET_PASSWORD":
 			message = PasswordResetMessage(w.PublicAppURL, item.To, token)
 		case "BRAND_INVITATION":
-			message = BrandInvitationMessage(w.PublicAppURL, item.To, token)
+			logoURL := ""
+			if w.LogoStore != nil && item.BrandLogoObjectKey != "" {
+				ttl := time.Until(item.ExpiresAt)
+				if ttl > 7*24*time.Hour {
+					ttl = 7 * 24 * time.Hour
+				}
+				if ttl > 0 {
+					logoURL, err = w.LogoStore.SignedGet(ctx, item.BrandLogoObjectKey, ttl)
+					if err != nil {
+						w.Logger.Warn("invitation logo signing failed", "outbox_id", item.ID, "error", err)
+						logoURL = ""
+					}
+				}
+			}
+			message = BrandInvitationMessage(w.PublicAppURL, item.To, token, BrandInvitationDetails{BrandName: item.BrandName, Role: item.InvitationRole, Branches: item.InvitationBranchNames, BrandLogoURL: logoURL})
 		default:
 			_ = w.Repo.MarkEmailFailed(ctx, item.ID, item.LeaseOwner, 5, errors.New("unknown email template"))
 			continue
