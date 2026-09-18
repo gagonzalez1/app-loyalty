@@ -48,9 +48,6 @@ func main() {
 	repo := repository.New(pool, cfg.OutboxEncryptionKey)
 	workerCtx, stopWorker := context.WithCancel(context.Background())
 	defer stopWorker()
-	if cfg.MailProvider == "smtp" {
-		go (mailer.Worker{Repo: repo, Sender: mailer.NewSMTP(cfg), Logger: logger, Interval: cfg.MailPollInterval, PublicAppURL: cfg.PublicAppURL, CipherKey: cfg.OutboxEncryptionKey}).Run(workerCtx)
-	}
 	tokens := auth.NewTokens(cfg.JWTSecret, cfg.JWTIssuer)
 	limiter := middleware.NewRateLimiter()
 	if cfg.RateLimitProvider == "redis" {
@@ -75,6 +72,9 @@ func main() {
 			logger.Error("media storage readiness failed", "error", err)
 			os.Exit(1)
 		}
+	}
+	if cfg.MailProvider == "smtp" {
+		go (mailer.Worker{Repo: repo, Sender: mailer.NewSMTP(cfg), Logger: logger, Interval: cfg.MailPollInterval, PublicAppURL: cfg.PublicAppURL, CipherKey: cfg.OutboxEncryptionKey, LogoStore: mediaStore}).Run(workerCtx)
 	}
 	go (maintenance.Worker{Repo: repo, Store: mediaStore, Logger: logger, Config: cfg}).Run(workerCtx)
 	svc := service.New(repo, tokens, cfg, mediaStore)

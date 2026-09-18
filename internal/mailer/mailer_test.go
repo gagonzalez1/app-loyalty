@@ -15,8 +15,28 @@ func TestMessagesContainBoundedActionLinks(t *testing.T) {
 		t.Fatalf("verification=%+v", verification)
 	}
 	reset := PasswordResetMessage("https://app.puntazo.test", "user@example.com", "secret-token")
-	if !strings.Contains(reset.Text, "/reset-password?token=secret-token") || !strings.Contains(reset.Text, "1 hora") {
+	if !strings.Contains(reset.Text, "/reset-password?token=secret-token") || !strings.Contains(reset.Text, "1 hora") || !strings.Contains(reset.HTML, "Creá una contraseña nueva") || !strings.Contains(reset.HTML, "/email-assets/mr-puntazo.png") || strings.Contains(reset.HTML, "%!") {
 		t.Fatalf("reset=%+v", reset)
+	}
+	invitation := BrandInvitationMessage("https://app.puntazo.test", "operator@example.com", "invite-token", BrandInvitationDetails{BrandName: "Café Aurora", Role: "OPERADOR", Branches: []string{"Belgrano", "Palermo"}, BrandLogoURL: "https://media.puntazo.test/logo.png"})
+	for _, expected := range []string{"Café Aurora quiere sumarte", "Operador", "Belgrano, Palermo", "https://media.puntazo.test/logo.png", "/invitaciones/aceptar?token=invite-token", "todavía no se haya registrado"} {
+		if !strings.Contains(invitation.HTML, expected) {
+			t.Fatalf("invitation HTML missing %q", expected)
+		}
+	}
+	if strings.Contains(invitation.HTML, "%!") {
+		t.Fatalf("invitation HTML contains formatting error")
+	}
+}
+
+func TestApprovedTemplatesEscapeDynamicContent(t *testing.T) {
+	reset := PasswordResetMessage("https://app.puntazo.test", `<script>@example.com`, `token&unsafe`)
+	if strings.Contains(reset.HTML, `<script>`) || !strings.Contains(reset.HTML, `token%26unsafe`) {
+		t.Fatalf("unsafe reset HTML=%s", reset.HTML)
+	}
+	invitation := BrandInvitationMessage("https://app.puntazo.test", "operator@example.com", "token", BrandInvitationDetails{BrandName: `<img src=x onerror=alert(1)>`, Role: "OPERADOR"})
+	if strings.Contains(invitation.HTML, `<img src=x`) || !strings.Contains(invitation.HTML, `&lt;img`) {
+		t.Fatalf("unsafe invitation HTML=%s", invitation.HTML)
 	}
 }
 func TestSMTPRejectsHeaderInjectionBeforeDial(t *testing.T) {
