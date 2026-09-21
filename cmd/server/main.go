@@ -15,6 +15,7 @@ import (
 	"clientesFrecuentes/internal/handler"
 	"clientesFrecuentes/internal/mailer"
 	"clientesFrecuentes/internal/maintenance"
+	"clientesFrecuentes/internal/mercadopago"
 	"clientesFrecuentes/internal/middleware"
 	"clientesFrecuentes/internal/repository"
 	"clientesFrecuentes/internal/service"
@@ -48,9 +49,6 @@ func main() {
 	repo := repository.New(pool, cfg.OutboxEncryptionKey)
 	workerCtx, stopWorker := context.WithCancel(context.Background())
 	defer stopWorker()
-	if cfg.MailProvider == "smtp" {
-		go (mailer.Worker{Repo: repo, Sender: mailer.NewSMTP(cfg), Logger: logger, Interval: cfg.MailPollInterval, PublicAppURL: cfg.PublicAppURL, CipherKey: cfg.OutboxEncryptionKey}).Run(workerCtx)
-	}
 	tokens := auth.NewTokens(cfg.JWTSecret, cfg.JWTIssuer)
 	limiter := middleware.NewRateLimiter()
 	if cfg.RateLimitProvider == "redis" {
@@ -76,8 +74,14 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	if cfg.MailProvider == "smtp" {
+		go (mailer.Worker{Repo: repo, Sender: mailer.NewSMTP(cfg), Logger: logger, Interval: cfg.MailPollInterval, PublicAppURL: cfg.PublicAppURL, CipherKey: cfg.OutboxEncryptionKey, LogoStore: mediaStore}).Run(workerCtx)
+	}
 	go (maintenance.Worker{Repo: repo, Store: mediaStore, Logger: logger, Config: cfg}).Run(workerCtx)
 	svc := service.New(repo, tokens, cfg, mediaStore)
+	if cfg.MercadoPagoProvider == "api" {
+		svc.Billing = mercadopago.New(cfg.MercadoPagoAPIURL, cfg.MercadoPagoAccessToken, cfg.MercadoPagoTimeout)
+	}
 	h := &handler.Handler{Service: svc, Repo: repo, Limiter: limiter, Uploads: middleware.NewUploadSemaphore(cfg.MediaUploadGlobalLimit, cfg.MediaUploadActorLimit), Logger: logger, TrustedProxyCount: cfg.TrustedProxyCount}
 	router := newRouter(h, tokens, logger)
 	server := &http.Server{Addr: ":" + cfg.Port, Handler: router, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: cfg.ReadTimeout, WriteTimeout: cfg.WriteTimeout, IdleTimeout: cfg.IdleTimeout, MaxHeaderBytes: 32 << 10}

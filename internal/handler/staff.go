@@ -134,20 +134,25 @@ func (h *Handler) PublicInvitation(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, web.Envelope[model.PublicInvitation]{Data: item, RequestID: web.RequestID(c)})
 }
-func (h *Handler) AcceptInvitation(c *gin.Context) {
-	a, ok := actor(c)
+func (h *Handler) RegisterInvitation(c *gin.Context) {
+	platform, ok := clientPlatform(c)
 	if !ok {
 		return
 	}
-	if !h.limit(c, fmt.Sprintf("invitation-accept:actor:%d", a.ID), 20, time.Hour) {
+	var req model.RegisterInvitationRequest
+	if decode(c, &req) != nil {
+		writeErr(c, service.ErrInvalidRequest)
 		return
 	}
-	item, err := h.Service.AcceptInvitation(c.Request.Context(), a.ID, c.Param("token"))
+	if !h.limit(c, "invitation-register:ip:"+h.clientIP(c), customerSignupAttempts, customerSignupWindow) {
+		return
+	}
+	data, err := h.Service.RegisterInvitation(c.Request.Context(), c.Param("token"), req)
 	if err != nil {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, web.Envelope[model.StaffMember]{Data: item, RequestID: web.RequestID(c)})
+	writeAuth(c, http.StatusCreated, platform, data)
 }
 func (h *Handler) Staff(c *gin.Context) {
 	a, ok := actor(c)

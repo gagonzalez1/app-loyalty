@@ -200,7 +200,22 @@ func (r *Repository) ClaimEmails(ctx context.Context, limit int) ([]model.Outbox
 		return nil, err
 	}
 	leaseOwner := uuid.NewString()
-	rows, err := r.Pool.Query(ctx, `WITH candidates AS (SELECT id FROM email_outbox WHERE token_expires_at>now() AND ((estado='PENDING' AND disponible_at<=now()) OR (estado='SENDING' AND lease_until<now())) ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT $1), claimed AS (UPDATE email_outbox e SET estado='SENDING',intentos=e.intentos+1,lease_until=now()+interval '2 minutes',lease_owner=$2 FROM candidates c WHERE e.id=c.id RETURNING e.id::text,e.destinatario::text,e.tipo,e.token_ciphertext,e.token_nonce,e.token_expires_at,e.intentos,e.lease_owner::text) SELECT * FROM claimed`, limit, leaseOwner)
+	rows, err := r.Pool.Query(ctx, `WITH candidates AS (
+		SELECT id FROM email_outbox
+		WHERE token_expires_at>now() AND ((estado='PENDING' AND disponible_at<=now()) OR (estado='SENDING' AND lease_until<now()))
+		ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT $1
+	), claimed AS (
+		UPDATE email_outbox e SET estado='SENDING',intentos=e.intentos+1,lease_until=now()+interval '2 minutes',lease_owner=$2
+		FROM candidates c WHERE e.id=c.id
+		RETURNING e.id::text,e.destinatario::text,e.tipo,e.token_ciphertext,e.token_nonce,e.token_expires_at,e.intentos,e.lease_owner::text,e.invitation_id
+	)
+	SELECT c.id,c.destinatario,c.tipo,c.token_ciphertext,c.token_nonce,c.token_expires_at,c.intentos,c.lease_owner,
+		COALESCE(m.nombre,''),COALESCE(i.rol,''),
+		COALESCE((SELECT array_agg(s.nombre::text ORDER BY s.nombre) FROM invitaciones_sucursales ins JOIN sucursales s ON s.id=ins.sucursal_id WHERE ins.invitacion_id=c.invitation_id),'{}'::text[]),
+		COALESCE((SELECT a.object_key FROM archivos_marca a WHERE a.marca_id=i.marca_id AND a.tipo='LOGO' AND a.estado='ACTIVA' ORDER BY a.created_at DESC LIMIT 1),'')
+	FROM claimed c
+	LEFT JOIN invitaciones_marca i ON i.id=c.invitation_id
+	LEFT JOIN marcas m ON m.id=i.marca_id`, limit, leaseOwner)
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +223,7 @@ func (r *Repository) ClaimEmails(ctx context.Context, limit int) ([]model.Outbox
 	items := make([]model.OutboxEmail, 0)
 	for rows.Next() {
 		var item model.OutboxEmail
-		if err = rows.Scan(&item.ID, &item.To, &item.Kind, &item.Ciphertext, &item.Nonce, &item.ExpiresAt, &item.Attempts, &item.LeaseOwner); err != nil {
+		if err = rows.Scan(&item.ID, &item.To, &item.Kind, &item.Ciphertext, &item.Nonce, &item.ExpiresAt, &item.Attempts, &item.LeaseOwner, &item.BrandName, &item.InvitationRole, &item.InvitationBranchNames, &item.BrandLogoObjectKey); err != nil {
 			return nil, err
 		}
 		items = append(items, item)

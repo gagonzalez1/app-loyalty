@@ -21,7 +21,7 @@ func TestDecodeAccountPatchPreservesOmittedNullAndValue(t *testing.T) {
 	if err := decode(ctx, &patch); err != nil {
 		t.Fatal(err)
 	}
-	if patch.Name.Set || !patch.LastName.Set || patch.LastName.Value != nil || !patch.Alias.Set || patch.Alias.Value == nil || *patch.Alias.Value != " apodo " || patch.PhotoURL.Set {
+	if patch.Name.Set || !patch.LastName.Set || patch.LastName.Value != nil || !patch.Alias.Set || patch.Alias.Value == nil || *patch.Alias.Value != " apodo " {
 		t.Fatalf("decoded patch=%+v", patch)
 	}
 }

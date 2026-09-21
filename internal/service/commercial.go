@@ -8,18 +8,27 @@ import (
 	"clientesFrecuentes/internal/model"
 )
 
-var hexColor = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+var (
+	hexColor   = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+	rewardIcon = regexp.MustCompile(`^[a-z0-9-]{1,80}$`)
+)
+
+var cardTemplates = map[string]bool{
+	"COMIC_HQ": true, "MINIMAL_PRO": true, "POP_BADGE": true, "PREMIUM_GOLD_CHECKS": true, "DARK_LUXURY_CHECKS": true,
+	"PREMIUM_GOLD": true, "DARK_LUXURY": true, "POP_HEADER": true, "COMIC_HQ_POINTS": true, "MINIMAL_PRO_POINTS": true,
+	"POP_BADGE_POINTS": true, "NEON_PULSE": true, "SUNSET_GRADIENT": true,
+}
 
 func (s *Service) UpdateBrand(ctx context.Context, a, b int64, v int, r model.UpdateBrandRequest) (model.MerchantContext, error) {
-	if r.Name == nil && r.Description == nil && r.PrimaryColor == nil && r.SecondaryColor == nil && r.Timezone == nil {
+	if r.Name == nil && r.Description == nil && r.PrimaryColor == nil && r.SecondaryColor == nil && r.Timezone == nil && r.CardTemplate == nil && r.RewardImage == nil {
 		return model.MerchantContext{}, ErrInvalidRequest
 	}
-	for _, x := range []*string{r.Name, r.Description, r.PrimaryColor, r.SecondaryColor, r.Timezone} {
+	for _, x := range []*string{r.Name, r.Description, r.PrimaryColor, r.SecondaryColor, r.Timezone, r.CardTemplate, r.RewardImage} {
 		if x != nil {
 			*x = strings.TrimSpace(*x)
 		}
 	}
-	if r.Name != nil && (*r.Name == "" || len(*r.Name) > 120) || r.Description != nil && len(*r.Description) > 1000 || r.PrimaryColor != nil && *r.PrimaryColor != "" && !hexColor.MatchString(*r.PrimaryColor) || r.SecondaryColor != nil && *r.SecondaryColor != "" && !hexColor.MatchString(*r.SecondaryColor) || r.Timezone != nil && *r.Timezone == "" {
+	if r.Name != nil && (*r.Name == "" || len(*r.Name) > 120) || r.Description != nil && len(*r.Description) > 1000 || r.PrimaryColor != nil && *r.PrimaryColor != "" && !hexColor.MatchString(*r.PrimaryColor) || r.SecondaryColor != nil && *r.SecondaryColor != "" && !hexColor.MatchString(*r.SecondaryColor) || r.Timezone != nil && *r.Timezone == "" || r.CardTemplate != nil && !cardTemplates[*r.CardTemplate] || r.RewardImage != nil && !rewardIcon.MatchString(*r.RewardImage) {
 		return model.MerchantContext{}, ErrInvalidRequest
 	}
 	return s.Repo.UpdateBrand(ctx, a, b, v, r)

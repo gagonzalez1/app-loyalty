@@ -15,13 +15,13 @@ sigue siendo 24 horas; los aliases HTTP legacy no convierten tokens anteriores.
 
 ## Desarrollo local
 
-Requisitos: Go 1.25, Docker y Docker Compose.
+Requisitos: Go 1.25.13, Docker y Docker Compose.
 
 Para levantar PostgreSQL, aplicar las migraciones y arrancar la API con las mismas imágenes usadas en despliegue:
 
 ```bash
 cp .env.example .env
-# Reemplazar JWT_SECRET, QR_PEPPER, DEMO_ACCESS_CODE_HASH y la contraseña de PostgreSQL.
+# Reemplazar JWT_SECRET, QR_PEPPER y la contraseña de PostgreSQL.
 docker compose --env-file .env up --build
 ```
 
@@ -72,11 +72,14 @@ ALLOW_MIGRATION_DOWN=true go run ./cmd/migrate down
 | `JWT_SECRET` | Secreto aleatorio de al menos 32 bytes. |
 | `JWT_ISSUER` | Issuer firmado y validado en JWT; por defecto `puntazo`. Cambiarlo invalida sesiones previas. |
 | `QR_PEPPER` | Secreto distinto de `JWT_SECRET`, de al menos 32 bytes. |
-| `DEMO_ACCESS_CODE_HASH` | Hash bcrypt del código de alta; obligatorio si `DEMO_SIGNUP_ENABLED=true`. |
 | `DEMO_SIGNUP_ENABLED` | Habilita o cierra nuevas altas gratuitas sin bloquear cuentas existentes. |
 | `CORS_ORIGINS` | Orígenes web exactos permitidos, separados por comas; habilita credenciales para la cookie HttpOnly de refresh. |
 | `GOOGLE_CLIENT_ID` | Audiencia web de Google; opcional para el alias legado. |
-| `EXPECTED_SCHEMA_VERSION` | Versión de esquema requerida por readiness; por defecto `0017`. |
+| `EXPECTED_SCHEMA_VERSION` | Versión de esquema requerida por readiness; por defecto `0019`. |
+| `MERCADO_PAGO_PROVIDER` | `api` habilita checkout y webhooks de suscripciones; `disabled` los mantiene apagados. |
+| `MERCADO_PAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET` | Secretos del backend para crear suscripciones y validar notificaciones. Nunca se exponen al frontend. |
+| `MERCADO_PAGO_BRANCH_PRICE_CENTS` | Precio mensual de Sellos por sucursal activa; por defecto `1500000` (ARS 15.000). |
+| `MERCADO_PAGO_POINTS_BRANCH_PRICE_CENTS` | Precio mensual de Puntos por sucursal activa; por defecto `2000000` (ARS 20.000). |
 | `APP_VERSION` | Etiqueta de versión informada por `/v1/version`; por defecto `dev`. |
 | `GIT_COMMIT` | Revisión del código informada por `/v1/version`; `0000000` si no se proporciona. No ejecuta Git. |
 | `TRUSTED_PROXY_COUNT` | Cantidad de proxies confiables para resolver la IP usada por rate limits. |
@@ -95,6 +98,54 @@ El despliegue debe proporcionar el SHA real de la revisión construida en
 `GIT_COMMIT` y el esquema correspondiente en `EXPECTED_SCHEMA_VERSION`.
 La API informa esa etiqueta; no verifica por sí misma el contenido del binario.
 Configurar la versión de esquema no aplica migraciones.
+
+## Activación de Mercado Pago
+
+La interfaz y la API pueden desplegarse con `MERCADO_PAGO_PROVIDER=disabled`: la
+sección Plan y facturación permanece visible y explica que el proveedor aún no está
+configurado, pero no permite iniciar ni cancelar cobros. Para habilitarla:
+
+1. Aplicar la migración `0019` y mantener `EXPECTED_SCHEMA_VERSION=0019`.
+2. Cargar únicamente en el runtime del backend `MERCADO_PAGO_ACCESS_TOKEN` y
+   `MERCADO_PAGO_WEBHOOK_SECRET`; no usar variables `EXPO_PUBLIC_*`.
+3. Cambiar `MERCADO_PAGO_PROVIDER=api` y reiniciar la API.
+4. Registrar en Mercado Pago la URL pública
+   `https://<host>/api/v1/mercado-pago/webhooks` para el evento
+   `subscription_preapproval`.
+5. Ejecutar un alta, retorno, webhook y cancelación completos con credenciales de
+   prueba antes de usar credenciales productivas.
+
+El propietario ve el total mensual antes de salir de Puntazo. Mercado Pago aloja
+la captura del medio de pago; el frontend nunca recibe el access token ni datos de
+tarjeta. `POST /v1/marcas/{brand_id}/suscripcion/cancelacion` envía el estado
+`canceled` al proveedor y detiene las renovaciones futuras.
+
+El primer checkout de una marca Sellos o Puntos incluye una prueba gratuita de un mes.
+La elegibilidad es de una sola vez: si esa marca cancela y vuelve a contratar,
+el nuevo checkout comienza con la facturación mensual normal.
+
+## Primer acceso con Google
+
+`POST /v1/auth/google` y el alias temporal `POST /auth/google` validan primero el
+`id_token`. Si la identidad corresponde a una cuenta existente, emiten la sesión
+con el `tipo_cuenta` persistido; cualquier `account_type` o
+`merchant_registration` recibido se ignora y no puede convertirla.
+
+Para una identidad Google verificada y nueva, una primera petición que envía sólo
+`id_token` responde `422 ACCOUNT_TYPE_REQUIRED` con
+`details.next_action=SELECT_ACCOUNT_TYPE`. Esa respuesta no crea usuario, sesión,
+QR, marca, membresía, sucursal ni programa. La API tampoco entrega un token
+intermedio: el frontend conserva el mismo ID token únicamente en memoria y lo
+reenvía con una de estas variantes:
+
+- `account_type=CLIENTE_FINAL`, sin `merchant_registration`, crea el cliente y su QR;
+- `account_type=PERSONAL_MARCA`, junto con un `merchant_registration` válido, crea
+  atómicamente usuario, marca, propietario, sucursal, programa y acceso demo.
+
+Un ID token inválido o vencido responde `401 UNAUTHENTICATED`; el cliente debe
+reiniciar el acceso con Google. Las altas cerradas y el código comercial inválido
+fallan antes de confirmar datos parciales. Este flujo usa las rutas y tablas
+existentes y no requiere una migración.
 
 ## Verificación
 

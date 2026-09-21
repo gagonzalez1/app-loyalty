@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const merchantContextSelect = `SELECT m.id,m.nombre,m.descripcion,m.color_primario,m.color_secundario,m.zona_horaria,m.version,mm.rol,s.id,s.marca_id,s.nombre,s.direccion,s.activo,s.localidad,s.provincia,s.codigo_postal,s.latitud,s.longitud,s.principal,s.version,s.created_at,s.updated_at,
+const merchantContextSelect = `SELECT m.id,m.nombre,m.descripcion,m.color_primario,m.color_secundario,m.plantilla_tarjeta,m.icono_premio,m.zona_horaria,m.version,mm.rol,s.id,s.marca_id,s.nombre,s.direccion,s.activo,s.localidad,s.provincia,s.codigo_postal,s.latitud,s.longitud,s.principal,s.version,s.created_at,s.updated_at,
 		p.id,p.marca_id,p.tipo,p.sellos_por_acumulacion,p.activo,p.nombre_unidad,p.version,p.created_at,p.updated_at,
 	a.tipo,a.precio_minor,a.moneda,a.cobro_automatico,a.activo,a.started_at
 	FROM membresias_marca mm JOIN marcas m ON m.id=mm.marca_id AND m.activo
@@ -21,7 +21,7 @@ const merchantContextSelect = `SELECT m.id,m.nombre,m.descripcion,m.color_primar
 
 func scanMerchant(row pgx.Row) (model.MerchantContext, error) {
 	var m model.MerchantContext
-	err := row.Scan(&m.BrandID, &m.BrandName, &m.BrandDescription, &m.PrimaryColor, &m.SecondaryColor, &m.Timezone, &m.BrandVersion, &m.Role, &m.Branch.ID, &m.Branch.BrandID, &m.Branch.Name, &m.Branch.Address, &m.Branch.Active, &m.Branch.Locality, &m.Branch.Province, &m.Branch.PostalCode, &m.Branch.Latitude, &m.Branch.Longitude, &m.Branch.Primary, &m.Branch.Version, &m.Branch.CreatedAt, &m.Branch.UpdatedAt,
+	err := row.Scan(&m.BrandID, &m.BrandName, &m.BrandDescription, &m.PrimaryColor, &m.SecondaryColor, &m.CardTemplate, &m.RewardImage, &m.Timezone, &m.BrandVersion, &m.Role, &m.Branch.ID, &m.Branch.BrandID, &m.Branch.Name, &m.Branch.Address, &m.Branch.Active, &m.Branch.Locality, &m.Branch.Province, &m.Branch.PostalCode, &m.Branch.Latitude, &m.Branch.Longitude, &m.Branch.Primary, &m.Branch.Version, &m.Branch.CreatedAt, &m.Branch.UpdatedAt,
 		&m.Program.ID, &m.Program.BrandID, &m.Program.Type, &m.Program.StampsPerAccumulation, &m.Program.Active, &m.Program.UnitName, &m.Program.Version, &m.Program.CreatedAt, &m.Program.UpdatedAt,
 		&m.DemoAccess.Kind, &m.DemoAccess.PriceMinor, &m.DemoAccess.Currency, &m.DemoAccess.AutomaticCharge, &m.DemoAccess.Active, &m.DemoAccess.StartedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -102,7 +102,7 @@ func (r *Repository) ListBrandCustomers(ctx context.Context, actorID, brandID in
 	var authorized bool
 	err = tx.QueryRow(ctx, `SELECT EXISTS(
 		SELECT 1 FROM usuarios u
-		JOIN membresias_marca mm ON mm.usuario_id=u.id AND mm.activo AND mm.rol='PROPIETARIO'
+		JOIN membresias_marca mm ON mm.usuario_id=u.id AND mm.activo
 		JOIN marcas m ON m.id=mm.marca_id AND m.activo AND m.deleted_at IS NULL
 		WHERE u.id=$1 AND u.tipo_cuenta='PERSONAL_MARCA' AND u.activo AND u.deleted_at IS NULL AND m.id=$2
 	)`, actorID, brandID).Scan(&authorized)

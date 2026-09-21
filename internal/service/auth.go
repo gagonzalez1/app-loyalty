@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"strings"
 	"time"
 
@@ -28,6 +29,9 @@ type sessionCredentials struct {
 }
 
 func (s *Service) RegisterCustomer(ctx context.Context, req model.RegisterCustomerRequest) (model.RegisterCustomerData, error) {
+	if !s.Config.DemoSignupEnabled {
+		return model.RegisterCustomerData{}, ErrDemoDisabled
+	}
 	email, err := normalizeEmail(req.Email)
 	if err != nil || !validPassword(req.Password) {
 		return model.RegisterCustomerData{}, ErrInvalidRequest
@@ -99,11 +103,15 @@ func (s *Service) Login(ctx context.Context, req model.LoginRequest) (model.Auth
 	return model.AuthData{Session: session, User: u.User}, nil
 }
 
-func (s *Service) LoginGoogle(ctx context.Context, idToken string) (model.AuthData, error) {
-	if strings.TrimSpace(idToken) == "" {
+func (s *Service) LoginGoogle(ctx context.Context, req model.GoogleAuthRequest) (model.AuthData, error) {
+	if strings.TrimSpace(req.IDToken) == "" {
 		return model.AuthData{}, ErrInvalidRequest
 	}
-	googleID, email, name, err := auth.VerifyGoogleToken(ctx, idToken)
+	verify := s.VerifyGoogleToken
+	if verify == nil {
+		verify = auth.VerifyGoogleToken
+	}
+	googleID, email, name, err := verify(ctx, req.IDToken)
 	if err != nil {
 		return model.AuthData{}, ErrInvalidCredentials
 	}
@@ -115,14 +123,89 @@ func (s *Service) LoginGoogle(ctx context.Context, idToken string) (model.AuthDa
 	if err != nil {
 		return model.AuthData{}, ErrInvalidCredentials
 	}
-	provisional := make([]byte, 32)
-	if _, err = rand.Read(provisional); err != nil {
+	u, err := s.Repo.ResolveGoogleUser(ctx, googleID, email)
+	if err == nil {
+		return s.googleSession(ctx, u)
+	}
+	if !errors.Is(err, repository.ErrNotFound) {
 		return model.AuthData{}, err
 	}
-	u, err := s.Repo.LoginGoogle(ctx, googleID, email, name, provisional, func(id int64) []byte { _, hash := s.QRForUser(id); return hash })
+	if req.AccountType == nil || strings.TrimSpace(*req.AccountType) == "" {
+		return model.AuthData{}, ErrAccountTypeRequired
+	}
+	accountType := strings.TrimSpace(*req.AccountType)
+	if accountType != "CLIENTE_FINAL" && accountType != "PERSONAL_MARCA" {
+		return model.AuthData{}, ErrInvalidRequest
+	}
+	if !s.Config.DemoSignupEnabled {
+		return model.AuthData{}, ErrDemoDisabled
+	}
+	if accountType == "CLIENTE_FINAL" {
+		if req.MerchantRegistration != nil {
+			return model.AuthData{}, ErrInvalidRequest
+		}
+		provisional := make([]byte, 32)
+		if _, err = rand.Read(provisional); err != nil {
+			return model.AuthData{}, err
+		}
+		err = retry(ctx, func() error {
+			u, err = s.Repo.CreateGoogleCustomer(ctx, googleID, email, name, provisional, func(id int64) []byte { _, hash := s.QRForUser(id); return hash })
+			return err
+		})
+	} else {
+		registration, validationErr := s.validateGoogleMerchant(req.MerchantRegistration)
+		if validationErr != nil {
+			return model.AuthData{}, validationErr
+		}
+		err = retry(ctx, func() error {
+			location := model.BranchRegistrationLocation{
+				BranchAddress: registration.BranchAddress, BranchLocality: registration.BranchLocality, BranchProvince: registration.BranchProvince,
+				BranchPostalCode: registration.BranchPostalCode, BranchLatitude: registration.BranchLatitude, BranchLongitude: registration.BranchLongitude,
+			}
+			u, err = s.Repo.CreateGoogleMerchant(ctx, googleID, email, name, registration.BrandName, registration.BranchName, location, registration.ProgramType)
+			return err
+		})
+	}
+	if errors.Is(err, repository.ErrEmailExists) || repository.IsUniqueViolation(err) {
+		u, err = s.Repo.ResolveGoogleUser(ctx, googleID, email)
+	}
 	if err != nil {
 		return model.AuthData{}, err
 	}
+	return s.googleSession(ctx, u)
+}
+
+func (s *Service) validateGoogleMerchant(registration *model.GoogleMerchantRegistration) (model.GoogleMerchantRegistration, error) {
+	if registration == nil {
+		return model.GoogleMerchantRegistration{}, ErrInvalidRequest
+	}
+	brand, err := cleanName(registration.BrandName, 120)
+	if err != nil {
+		return model.GoogleMerchantRegistration{}, err
+	}
+	branch, err := cleanName(registration.BranchName, 120)
+	if err != nil {
+		return model.GoogleMerchantRegistration{}, err
+	}
+	location := model.BranchRegistrationLocation{
+		BranchAddress: registration.BranchAddress, BranchLocality: registration.BranchLocality, BranchProvince: registration.BranchProvince,
+		BranchPostalCode: registration.BranchPostalCode, BranchLatitude: registration.BranchLatitude, BranchLongitude: registration.BranchLongitude,
+	}
+	if err = cleanRegistrationBranchLocation(&location); err != nil {
+		return model.GoogleMerchantRegistration{}, err
+	}
+	programType, err := normalizeProgramType(registration.ProgramType)
+	if err != nil {
+		return model.GoogleMerchantRegistration{}, ErrInvalidRequest
+	}
+	return model.GoogleMerchantRegistration{
+		BrandName: brand, BranchName: branch, BranchAddress: location.BranchAddress, BranchLocality: location.BranchLocality,
+		BranchProvince: location.BranchProvince, BranchPostalCode: location.BranchPostalCode, BranchLatitude: location.BranchLatitude,
+		BranchLongitude: location.BranchLongitude, ProgramType: programType,
+	}, nil
+}
+
+func (s *Service) googleSession(ctx context.Context, u model.User) (model.AuthData, error) {
 	session, err := s.issueSession(ctx, u)
 	if err != nil {
 		return model.AuthData{}, err

@@ -13,8 +13,8 @@ import (
 )
 
 var (
-	ErrInvitationInvalid       = errors.New("invitation invalid")
-	ErrInvitationEmailMismatch = errors.New("invitation email mismatch")
+	ErrInvitationInvalid         = errors.New("invitation invalid")
+	ErrInvitationEmailRegistered = errors.New("invitation email already registered")
 )
 
 func requireStaffManager(ctx context.Context, tx pgx.Tx, actorID, brandID int64) error {
@@ -123,11 +123,11 @@ func (r *Repository) CreateInvitation(ctx context.Context, actorID, brandID int6
 		return IdempotentResult{}, err
 	}
 	var exists bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM usuarios u JOIN membresias_marca mm ON mm.usuario_id=u.id WHERE u.email=$1 AND mm.marca_id=$2 AND mm.activo)`, req.Email, brandID).Scan(&exists); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM usuarios WHERE email=$1)`, req.Email).Scan(&exists); err != nil {
 		return IdempotentResult{}, err
 	}
 	if exists {
-		return IdempotentResult{}, ErrConflict
+		return IdempotentResult{}, ErrInvitationEmailRegistered
 	}
 	id := uuid.New()
 	if _, err = tx.Exec(ctx, `INSERT INTO invitaciones_marca(id,marca_id,invitado_por,email,rol,token_hash,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7)`, id, brandID, actorID, req.Email, req.Role, hash, expires); err != nil {
@@ -238,61 +238,54 @@ func maskEmail(email string) string {
 	return "***"
 }
 
-func (r *Repository) AcceptInvitation(ctx context.Context, actorID int64, hash []byte, now time.Time) (model.StaffMember, error) {
+func (r *Repository) RegisterInvitation(ctx context.Context, hash []byte, now time.Time, name, passwordHash string) (model.User, error) {
 	tx, err := r.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
-		return model.StaffMember{}, err
+		return model.User{}, err
 	}
 	defer tx.Rollback(ctx)
-	var id uuid.UUID
+	var invitationID uuid.UUID
 	var brandID int64
-	var invitedEmail, actorEmail, role, accountType string
-	err = tx.QueryRow(ctx, `SELECT i.id,i.marca_id,i.email::text,i.rol FROM invitaciones_marca i JOIN marcas m ON m.id=i.marca_id AND m.activo AND m.deleted_at IS NULL WHERE i.token_hash=$1 AND i.estado='PENDIENTE' AND i.expires_at>$2 FOR UPDATE OF i,m`, hash, now).Scan(&id, &brandID, &invitedEmail, &role)
+	var email, role string
+	err = tx.QueryRow(ctx, `SELECT i.id,i.marca_id,i.email::text,i.rol FROM invitaciones_marca i JOIN marcas m ON m.id=i.marca_id AND m.activo AND m.deleted_at IS NULL WHERE i.token_hash=$1 AND i.estado='PENDIENTE' AND i.expires_at>$2 FOR UPDATE OF i,m`, hash, now).Scan(&invitationID, &brandID, &email, &role)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return model.StaffMember{}, ErrInvitationInvalid
+		return model.User{}, ErrInvitationInvalid
 	}
 	if err != nil {
-		return model.StaffMember{}, err
+		return model.User{}, err
 	}
-	if err = tx.QueryRow(ctx, `SELECT email::text,tipo_cuenta FROM usuarios WHERE id=$1 AND activo AND deleted_at IS NULL FOR UPDATE`, actorID).Scan(&actorEmail, &accountType); err != nil {
-		return model.StaffMember{}, err
+	var exists bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM usuarios WHERE email=$1)`, email).Scan(&exists); err != nil {
+		return model.User{}, err
 	}
-	if actorEmail != invitedEmail {
-		return model.StaffMember{}, ErrInvitationEmailMismatch
+	if exists {
+		return model.User{}, ErrEmailExists
 	}
-	if accountType == "CLIENTE_FINAL" {
-		var hasLoyalty bool
-		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM tarjetas WHERE usuario_id=$1)`, actorID).Scan(&hasLoyalty); err != nil {
-			return model.StaffMember{}, err
-		}
-		if hasLoyalty {
-			return model.StaffMember{}, ErrAccountModeConflict
-		}
-	}
-	if _, err = tx.Exec(ctx, `UPDATE usuarios SET tipo_cuenta='PERSONAL_MARCA',qr_hash=NULL,version=version+1 WHERE id=$1`, actorID); err != nil {
-		return model.StaffMember{}, err
+	var user model.User
+	err = tx.QueryRow(ctx, `INSERT INTO usuarios(email,password_hash,nombre,tipo_cuenta,qr_hash,email_verified_at)
+		VALUES($1,$2,$3,'PERSONAL_MARCA',NULL,$4)
+		RETURNING id,email::text,nombre,apellido,alias,foto_url,tipo_cuenta,activo,true,auth_version,version,created_at`, email, passwordHash, name, now).
+		Scan(&user.ID, &user.Email, &user.Name, &user.LastName, &user.Alias, &user.PhotoURL, &user.AccountType, &user.Active, &user.EmailVerified, &user.AuthVersion, &user.Version, &user.CreatedAt)
+	if err != nil {
+		return model.User{}, normalize(err)
 	}
 	var membershipID int64
-	err = tx.QueryRow(ctx, `INSERT INTO membresias_marca(usuario_id,marca_id,rol) VALUES($1,$2,$3) ON CONFLICT(usuario_id,marca_id) DO UPDATE SET rol=EXCLUDED.rol,activo=true,version=membresias_marca.version+1,updated_at=$4 WHERE NOT membresias_marca.activo RETURNING id`, actorID, brandID, role, now).Scan(&membershipID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return model.StaffMember{}, ErrConflict
+	if err = tx.QueryRow(ctx, `INSERT INTO membresias_marca(usuario_id,marca_id,rol) VALUES($1,$2,$3) RETURNING id`, user.ID, brandID, role).Scan(&membershipID); err != nil {
+		return model.User{}, normalize(err)
 	}
-	if err != nil {
-		return model.StaffMember{}, err
+	if _, err = tx.Exec(ctx, `INSERT INTO membresias_sucursales(membresia_id,sucursal_id,marca_id) SELECT $1,sucursal_id,marca_id FROM invitaciones_sucursales WHERE invitacion_id=$2`, membershipID, invitationID); err != nil {
+		return model.User{}, err
 	}
-	if _, err = tx.Exec(ctx, `INSERT INTO membresias_sucursales(membresia_id,sucursal_id,marca_id) SELECT $1,sucursal_id,marca_id FROM invitaciones_sucursales WHERE invitacion_id=$2 ON CONFLICT(membresia_id,sucursal_id) DO UPDATE SET activo=true`, membershipID, id); err != nil {
-		return model.StaffMember{}, err
+	if _, err = tx.Exec(ctx, `UPDATE invitaciones_marca SET estado='ACEPTADA',accepted_by=$2,accepted_at=$3,version=version+1,updated_at=$3 WHERE id=$1`, invitationID, user.ID, now); err != nil {
+		return model.User{}, err
 	}
-	if _, err = tx.Exec(ctx, `UPDATE invitaciones_marca SET estado='ACEPTADA',accepted_by=$2,accepted_at=$3,version=version+1,updated_at=$3 WHERE id=$1`, id, actorID, now); err != nil {
-		return model.StaffMember{}, err
-	}
-	if _, err = tx.Exec(ctx, `UPDATE email_outbox SET estado='FAILED',ultimo_error='invitation accepted',token_ciphertext=NULL,token_nonce=NULL,token_expires_at=NULL,lease_until=NULL,lease_owner=NULL WHERE invitation_id=$1 AND estado IN('PENDING','SENDING')`, id); err != nil {
-		return model.StaffMember{}, err
+	if _, err = tx.Exec(ctx, `UPDATE email_outbox SET estado='FAILED',ultimo_error='invitation accepted',token_ciphertext=NULL,token_nonce=NULL,token_expires_at=NULL,lease_until=NULL,lease_owner=NULL WHERE invitation_id=$1 AND estado IN('PENDING','SENDING')`, invitationID); err != nil {
+		return model.User{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {
-		return model.StaffMember{}, err
+		return model.User{}, normalize(err)
 	}
-	return r.staffMemberByID(ctx, brandID, membershipID)
+	return user, nil
 }
 
 func (r *Repository) staffMemberByID(ctx context.Context, brandID, membershipID int64) (model.StaffMember, error) {

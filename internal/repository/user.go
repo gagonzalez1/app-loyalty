@@ -55,7 +55,23 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (AuthUser
 	return u, err
 }
 
-func (r *Repository) LoginGoogle(ctx context.Context, googleID, email, name string, provisionalQRHash []byte, finalQRHash func(int64) []byte) (model.User, error) {
+func (r *Repository) LoginGoogle(ctx context.Context, googleID, email, name string, allowSignup bool, provisionalQRHash []byte, finalQRHash func(int64) []byte) (model.User, error) {
+	u, err := r.ResolveGoogleUser(ctx, googleID, email)
+	if err == nil {
+		return u, nil
+	}
+	if !errors.Is(err, ErrNotFound) {
+		return model.User{}, err
+	}
+	if !allowSignup {
+		return model.User{}, ErrSignupDisabled
+	}
+	return r.CreateGoogleCustomer(ctx, googleID, email, name, provisionalQRHash, finalQRHash)
+}
+
+// ResolveGoogleUser logs in an already linked account or links Google to the
+// active account with the same verified email. It never creates an account.
+func (r *Repository) ResolveGoogleUser(ctx context.Context, googleID, email string) (model.User, error) {
 	tx, err := r.Pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return model.User{}, err
@@ -86,6 +102,16 @@ func (r *Repository) LoginGoogle(ctx context.Context, googleID, email, name stri
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return model.User{}, err
 	}
+	return model.User{}, ErrNotFound
+}
+
+func (r *Repository) CreateGoogleCustomer(ctx context.Context, googleID, email, name string, provisionalQRHash []byte, finalQRHash func(int64) []byte) (model.User, error) {
+	tx, err := r.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	if err != nil {
+		return model.User{}, err
+	}
+	defer tx.Rollback(ctx)
+	var u model.User
 	err = tx.QueryRow(ctx, `INSERT INTO usuarios(email,google_id,nombre,tipo_cuenta,qr_hash,email_verified_at) VALUES($1,$2,$3,'CLIENTE_FINAL',$4,now()) RETURNING id,email::text,nombre,apellido,alias,foto_url,tipo_cuenta,activo,true,auth_version,version,created_at`, email, googleID, name, provisionalQRHash).Scan(&u.ID, &u.Email, &u.Name, &u.LastName, &u.Alias, &u.PhotoURL, &u.AccountType, &u.Active, &u.EmailVerified, &u.AuthVersion, &u.Version, &u.CreatedAt)
 	if err != nil {
 		return model.User{}, normalize(err)
@@ -113,11 +139,10 @@ func (r *Repository) UpdateAccount(ctx context.Context, id int64, expectedVersio
 	command, err := r.Pool.Exec(ctx, `UPDATE usuarios SET nombre=CASE WHEN $3 THEN $4 ELSE nombre END,
 		apellido=CASE WHEN $5 THEN NULLIF($6,'') ELSE apellido END,
 		alias=CASE WHEN $7 THEN NULLIF($8,'') ELSE alias END,
-		foto_url=CASE WHEN $9 THEN NULLIF($10,'') ELSE foto_url END,
 		version=version+1
 		WHERE id=$1 AND version=$2 AND activo AND deleted_at IS NULL`, id, expectedVersion,
 		req.Name.Set, patchValue(req.Name), req.LastName.Set, patchValue(req.LastName),
-		req.Alias.Set, patchValue(req.Alias), req.PhotoURL.Set, patchValue(req.PhotoURL))
+		req.Alias.Set, patchValue(req.Alias))
 	if err != nil {
 		return model.CurrentUser{}, err
 	}

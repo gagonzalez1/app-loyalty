@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
+	"io"
+	"strings"
 	"time"
 
 	"clientesFrecuentes/internal/config"
@@ -24,6 +27,7 @@ type S3 struct {
 }
 
 const operationTimeout = 10 * time.Second
+const maxEmailImageBytes = 5 << 20
 
 func NewS3(ctx context.Context, cfg config.Config) (*S3, error) {
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx,
@@ -96,4 +100,29 @@ func (s *S3) SignedGet(ctx context.Context, key string, ttl time.Duration) (stri
 		return "", fmt.Errorf("sign private media object: %w", err)
 	}
 	return result.URL, nil
+}
+
+// ReadEmailImage retrieves a private image for inline email delivery. Keeping
+// the object private and attaching it by Content-ID avoids relying on email
+// clients to load signed, remote URLs.
+func (s *S3) ReadEmailImage(ctx context.Context, key string) ([]byte, string, error) {
+	ctx, cancel := context.WithTimeout(ctx, operationTimeout)
+	defer cancel()
+	result, err := s.client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)})
+	if err != nil {
+		return nil, "", fmt.Errorf("get private media object: %w", err)
+	}
+	defer result.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(result.Body, maxEmailImageBytes+1))
+	if err != nil {
+		return nil, "", fmt.Errorf("read private media object: %w", err)
+	}
+	if len(body) > maxEmailImageBytes {
+		return nil, "", errors.New("email image exceeds 5 MiB")
+	}
+	contentType := "image/png"
+	if result.ContentType != nil && strings.HasPrefix(*result.ContentType, "image/") {
+		contentType = *result.ContentType
+	}
+	return body, contentType, nil
 }

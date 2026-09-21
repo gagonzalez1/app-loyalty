@@ -112,7 +112,7 @@ func (r *Repository) FailBrandImage(ctx context.Context, id string, failure stri
 
 func (r *Repository) ListBrandImages(ctx context.Context, actorID, brandID int64) ([]model.BrandImage, error) {
 	var allowed bool
-	if err := r.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM membresias_marca mm JOIN marcas m ON m.id=mm.marca_id AND m.activo WHERE mm.usuario_id=$1 AND mm.marca_id=$2 AND mm.activo AND mm.rol IN ('PROPIETARIO','ADMINISTRADOR'))`, actorID, brandID).Scan(&allowed); err != nil {
+	if err := r.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM membresias_marca mm JOIN marcas m ON m.id=mm.marca_id AND m.activo WHERE mm.usuario_id=$1 AND mm.marca_id=$2 AND mm.activo)`, actorID, brandID).Scan(&allowed); err != nil {
 		return nil, err
 	}
 	if !allowed {

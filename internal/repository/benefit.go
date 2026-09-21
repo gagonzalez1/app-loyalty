@@ -40,15 +40,16 @@ func (r *Repository) listBenefitsByProgramIDs(ctx context.Context, programIDs []
 	if len(programIDs) == 0 {
 		return result, nil
 	}
-	rows, err := r.Pool.Query(ctx, `SELECT id,programa_id,nombre,requisito_sellos,requisito_puntos,activo,version,descripcion,deleted_at,created_at,updated_at
-		FROM beneficios WHERE programa_id=ANY($1) AND activo AND deleted_at IS NULL ORDER BY id`, programIDs)
+	rows, err := r.Pool.Query(ctx, `SELECT b.id,b.programa_id,b.nombre,b.requisito_sellos,b.requisito_puntos,b.activo,b.version,b.descripcion,b.deleted_at,b.created_at,b.updated_at,
+		COALESCE((SELECT a.object_key FROM archivos_marca a WHERE a.tipo='BENEFICIO' AND a.beneficio_id=b.id AND a.estado='ACTIVA' ORDER BY a.created_at DESC LIMIT 1),'')
+		FROM beneficios b WHERE b.programa_id=ANY($1) AND b.activo AND b.deleted_at IS NULL ORDER BY b.id`, programIDs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var item model.Benefit
-		if err = scanBenefit(rows, &item); err != nil {
+		if err = rows.Scan(&item.ID, &item.ProgramID, &item.Name, &item.RequiredStamps, &item.RequiredPoints, &item.Active, &item.Version, &item.Description, &item.DeletedAt, &item.CreatedAt, &item.UpdatedAt, &item.ImageObjectKey); err != nil {
 			return nil, err
 		}
 		result[item.ProgramID] = append(result[item.ProgramID], item)

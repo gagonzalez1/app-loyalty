@@ -19,12 +19,6 @@ func (s *Service) RegisterDemoMerchant(ctx context.Context, key, requestID strin
 	if !s.Config.DemoSignupEnabled {
 		return repository.IdempotentResult{}, ErrDemoDisabled
 	}
-	if len(req.AccessCode) < 12 || len(req.AccessCode) > 128 {
-		return repository.IdempotentResult{}, ErrInvalidRequest
-	}
-	if bcrypt.CompareHashAndPassword([]byte(s.Config.DemoAccessCodeHash), []byte(req.AccessCode)) != nil {
-		return repository.IdempotentResult{}, ErrDemoAccess
-	}
 	if _, err := uuid.Parse(key); err != nil {
 		return repository.IdempotentResult{}, ErrInvalidRequest
 	}
@@ -44,12 +38,12 @@ func (s *Service) RegisterDemoMerchant(ctx context.Context, key, requestID strin
 	if err != nil {
 		return repository.IdempotentResult{}, err
 	}
-	if req.BranchAddress != nil {
-		v := strings.TrimSpace(*req.BranchAddress)
-		if len([]rune(v)) > 240 {
-			return repository.IdempotentResult{}, ErrInvalidRequest
-		}
-		req.BranchAddress = &v
+	location := model.BranchRegistrationLocation{
+		BranchAddress: req.BranchAddress, BranchLocality: req.BranchLocality, BranchProvince: req.BranchProvince,
+		BranchPostalCode: req.BranchPostalCode, BranchLatitude: req.BranchLatitude, BranchLongitude: req.BranchLongitude,
+	}
+	if err := cleanRegistrationBranchLocation(&location); err != nil {
+		return repository.IdempotentResult{}, err
 	}
 	programType, err := normalizeProgramType(req.ProgramType)
 	if err != nil {
@@ -64,8 +58,13 @@ func (s *Service) RegisterDemoMerchant(ctx context.Context, key, requestID strin
 	fingerprint := KeyedFingerprint(s.Config.QRPepper, struct {
 		Email, Password, OwnerName, BrandName, BranchName string
 		BranchAddress                                     *string
+		BranchLocality                                    *string  `json:",omitempty"`
+		BranchProvince                                    *string  `json:",omitempty"`
+		BranchPostalCode                                  *string  `json:",omitempty"`
+		BranchLatitude                                    *float64 `json:",omitempty"`
+		BranchLongitude                                   *float64 `json:",omitempty"`
 		ProgramType                                       string
-	}{email, req.Password, owner, brand, branch, req.BranchAddress, programType})
+	}{email, req.Password, owner, brand, branch, location.BranchAddress, location.BranchLocality, location.BranchProvince, location.BranchPostalCode, location.BranchLatitude, location.BranchLongitude, programType})
 	credentials, err := newSessionCredentials()
 	if err != nil {
 		return repository.IdempotentResult{}, err
@@ -89,7 +88,7 @@ func (s *Service) RegisterDemoMerchant(ctx context.Context, key, requestID strin
 	var result repository.IdempotentResult
 	err = retry(ctx, func() error {
 		var e error
-		result, e = s.Repo.CreateDemoMerchant(ctx, key, fingerprint, email, string(passwordHash), owner, brand, branch, req.BranchAddress, programType, credentials.id, credentials.hash, credentials.expiresAt, credentials.authTime, verifiedAt, verificationHash, verificationExpires, verificationMessage, func(u model.User, m model.MerchantContext) ([]byte, error) {
+		result, e = s.Repo.CreateDemoMerchant(ctx, key, fingerprint, email, string(passwordHash), owner, brand, branch, location, programType, credentials.id, credentials.hash, credentials.expiresAt, credentials.authTime, verifiedAt, verificationHash, verificationExpires, verificationMessage, func(u model.User, m model.MerchantContext) ([]byte, error) {
 			if s.Config.EmailVerificationRequired {
 				return json.Marshal(web.Envelope[model.DemoMerchantData]{Data: model.DemoMerchantData{User: u, Merchant: m, VerificationRequired: true}, RequestID: requestID})
 			}
@@ -130,6 +129,39 @@ func (s *Service) RegisterDemoMerchant(ctx context.Context, key, requestID strin
 		return repository.IdempotentResult{}, err
 	}
 	return result, nil
+}
+
+func cleanRegistrationBranchLocation(location *model.BranchRegistrationLocation) error {
+	fields := []struct {
+		value **string
+		max   int
+	}{
+		{&location.BranchAddress, 300},
+		{&location.BranchLocality, 120},
+		{&location.BranchProvince, 120},
+		{&location.BranchPostalCode, 20},
+	}
+	for _, field := range fields {
+		if *field.value == nil {
+			continue
+		}
+		trimmed := strings.TrimSpace(**field.value)
+		if len([]rune(trimmed)) > field.max {
+			return ErrInvalidRequest
+		}
+		if trimmed == "" {
+			*field.value = nil
+		} else {
+			*field.value = &trimmed
+		}
+	}
+	if (location.BranchLatitude == nil) != (location.BranchLongitude == nil) {
+		return ErrInvalidRequest
+	}
+	if location.BranchLatitude != nil && (*location.BranchLatitude < -90 || *location.BranchLatitude > 90 || *location.BranchLongitude < -180 || *location.BranchLongitude > 180) {
+		return ErrInvalidRequest
+	}
+	return nil
 }
 
 func normalizeProgramType(value string) (string, error) {

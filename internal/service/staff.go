@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"clientesFrecuentes/internal/web"
 
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func cleanInvitation(req *model.CreateInvitationRequest) error {
@@ -102,21 +104,36 @@ func (s *Service) PublicInvitation(ctx context.Context, token string) (model.Pub
 	}
 	return x, e
 }
-func (s *Service) AcceptInvitation(ctx context.Context, actorID int64, token string) (model.StaffMember, error) {
-	h, e := invitationHash(token)
-	if e != nil {
-		return model.StaffMember{}, e
+func (s *Service) RegisterInvitation(ctx context.Context, token string, req model.RegisterInvitationRequest) (model.AuthData, error) {
+	h, err := invitationHash(token)
+	if err != nil {
+		return model.AuthData{}, err
 	}
-	var x model.StaffMember
-	e = retry(ctx, func() error {
+	name, err := cleanName(req.Name, 120)
+	if err != nil || !validPassword(req.Password) {
+		return model.AuthData{}, ErrInvalidRequest
+	}
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return model.AuthData{}, err
+	}
+	var user model.User
+	err = retry(ctx, func() error {
 		var retryErr error
-		x, retryErr = s.Repo.AcceptInvitation(ctx, actorID, h, s.Now())
+		user, retryErr = s.Repo.RegisterInvitation(ctx, h, s.Now(), name, string(passwordHash))
 		return retryErr
 	})
-	if e == repository.ErrInvitationInvalid {
-		return x, ErrIdentityToken
+	if errors.Is(err, repository.ErrInvitationInvalid) {
+		return model.AuthData{}, ErrIdentityToken
 	}
-	return x, e
+	if err != nil {
+		return model.AuthData{}, err
+	}
+	session, err := s.issueSession(ctx, user)
+	if err != nil {
+		return model.AuthData{}, err
+	}
+	return model.AuthData{Session: session, User: user}, nil
 }
 func (s *Service) Staff(ctx context.Context, actorID, brandID int64) ([]model.StaffMember, error) {
 	return s.Repo.ListStaff(ctx, actorID, brandID)

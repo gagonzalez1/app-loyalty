@@ -16,6 +16,9 @@ type Worker struct {
 	Interval     time.Duration
 	PublicAppURL string
 	CipherKey    []byte
+	LogoStore    interface {
+		ReadEmailImage(context.Context, string) ([]byte, string, error)
+	}
 }
 
 func (w Worker) Run(ctx context.Context) {
@@ -59,10 +62,28 @@ func (w Worker) flush(ctx context.Context) {
 		case "RESET_PASSWORD":
 			message = PasswordResetMessage(w.PublicAppURL, item.To, token)
 		case "BRAND_INVITATION":
-			message = BrandInvitationMessage(w.PublicAppURL, item.To, token)
+			logoURL := ""
+			var logoData []byte
+			var logoContentType string
+			if w.LogoStore != nil && item.BrandLogoObjectKey != "" {
+				logoData, logoContentType, err = w.LogoStore.ReadEmailImage(ctx, item.BrandLogoObjectKey)
+				if err != nil {
+					w.Logger.Warn("invitation logo loading failed", "outbox_id", item.ID, "error", err)
+					logoData = nil
+				} else {
+					logoURL = "cid:" + brandLogoContentID
+				}
+			}
+			message = BrandInvitationMessage(w.PublicAppURL, item.To, token, BrandInvitationDetails{BrandName: item.BrandName, Role: item.InvitationRole, Branches: item.InvitationBranchNames, BrandLogoURL: logoURL})
+			if len(logoData) > 0 {
+				message.InlineImages = append(message.InlineImages, model.EmailInlineImage{ContentID: brandLogoContentID, Filename: "logo-comercio", ContentType: logoContentType, Data: logoData})
+			}
 		default:
 			_ = w.Repo.MarkEmailFailed(ctx, item.ID, item.LeaseOwner, 5, errors.New("unknown email template"))
 			continue
+		}
+		if item.Kind == "RESET_PASSWORD" || item.Kind == "BRAND_INVITATION" {
+			message.InlineImages = append(message.InlineImages, model.EmailInlineImage{ContentID: mascotContentID, Filename: "mr-puntazo.png", ContentType: "image/png", Data: mascotPNG})
 		}
 		if err = w.Sender.Send(ctx, message); err != nil {
 			w.Logger.Warn("email delivery failed", "outbox_id", item.ID, "attempt", item.Attempts, "error", err)
