@@ -73,6 +73,7 @@ func TestRouteInventoryAndAuthentication(t *testing.T) {
 		{"POST", "/v1/marcas/:brand_id/suscripcion/cancelacion", "/v1/marcas/1/suscripcion/cancelacion"},
 		{"GET", "/v1/clientes/me", "/v1/clientes/me"},
 		{"GET", "/v1/clientes/me/tarjetas", "/v1/clientes/me/tarjetas"},
+		{"POST", "/v1/clientes/me/push-token", "/v1/clientes/me/push-token"},
 		{"GET", "/v1/clientes/me/movimientos", "/v1/clientes/me/movimientos"},
 		{"GET", "/v1/clientes/me/tarjetas/:card_id/movimientos", "/v1/clientes/me/tarjetas/1/movimientos"},
 		{"POST", "/v1/movimientos/preview", "/v1/movimientos/preview"},

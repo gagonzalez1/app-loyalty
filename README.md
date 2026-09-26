@@ -75,7 +75,7 @@ ALLOW_MIGRATION_DOWN=true go run ./cmd/migrate down
 | `DEMO_SIGNUP_ENABLED` | Habilita o cierra nuevas altas gratuitas sin bloquear cuentas existentes. |
 | `CORS_ORIGINS` | Orígenes web exactos permitidos, separados por comas; habilita credenciales para la cookie HttpOnly de refresh. |
 | `GOOGLE_CLIENT_ID` | Audiencia web de Google; opcional para el alias legado. |
-| `EXPECTED_SCHEMA_VERSION` | Versión de esquema requerida por readiness; por defecto `0020`. |
+| `EXPECTED_SCHEMA_VERSION` | Versión de esquema requerida por readiness; por defecto `0021`. |
 | `MERCADO_PAGO_PROVIDER` | `api` habilita checkout y webhooks de suscripciones; `disabled` los mantiene apagados. |
 | `MERCADO_PAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET` | Secretos del backend para crear suscripciones y validar notificaciones. Nunca se exponen al frontend. |
 | `MERCADO_PAGO_BRANCH_PRICE_CENTS` | Precio mensual de Sellos por sucursal activa; por defecto `1500000` (ARS 15.000). |
@@ -99,13 +99,33 @@ El despliegue debe proporcionar el SHA real de la revisión construida en
 La API informa esa etiqueta; no verifica por sí misma el contenido del binario.
 Configurar la versión de esquema no aplica migraciones.
 
+## Notificaciones de tarjetas
+
+La app Expo registra su destino con `POST /v1/clientes/me/push-token` usando el
+access token de un `CLIENTE_FINAL` y un cuerpo como
+`{"expo_push_token":"ExpoPushToken[ejemplo]","device_id":"telefono-principal"}`.
+`device_id` es opcional; se recomienda un identificador estable por instalación
+para reemplazar el token al rotar. Se admiten varios dispositivos por cliente.
+El endpoint responde `200` con `data.registered: true`.
+
+La migración `0021` agrega tokens y una cola persistida. Un trigger sobre
+`tarjetas` crea trabajos dentro de la misma transacción al insertar, actualizar
+o eliminar una tarjeta. También se encolan avisos si cambian marca, programa,
+beneficios o imágenes que aparecen en la respuesta de tarjetas. El worker envía
+el aviso a Expo fuera de la petición,
+reintenta fallos transitorios hasta cinco veces y elimina tokens rechazados como
+`DeviceNotRegistered`. La API de Expo acepta el envío de forma asíncrona; una
+respuesta satisfactoria significa que Expo lo aceptó, no que el dispositivo lo
+mostró. La app debe actualizar `GET /v1/clientes/me/tarjetas?page=1&page_size=100`
+al recibir `data.action = REFRESH_CARDS`.
+
 ## Activación de Mercado Pago
 
 La interfaz y la API pueden desplegarse con `MERCADO_PAGO_PROVIDER=disabled`: la
 sección Plan y facturación permanece visible y explica que el proveedor aún no está
 configurado, pero no permite iniciar ni cancelar cobros. Para habilitarla:
 
-1. Aplicar las migraciones hasta `0020` y mantener `EXPECTED_SCHEMA_VERSION=0020`.
+1. Aplicar las migraciones hasta `0021` y mantener `EXPECTED_SCHEMA_VERSION=0021`.
 2. Cargar únicamente en el runtime del backend `MERCADO_PAGO_ACCESS_TOKEN` y
    `MERCADO_PAGO_WEBHOOK_SECRET`; no usar variables `EXPO_PUBLIC_*`.
 3. Cambiar `MERCADO_PAGO_PROVIDER=api` y reiniciar la API.

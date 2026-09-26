@@ -1,0 +1,13 @@
+DROP TRIGGER IF EXISTS archivos_push_updated ON archivos_marca;
+DROP FUNCTION IF EXISTS enqueue_artwork_push();
+DROP TRIGGER IF EXISTS beneficios_push_updated ON beneficios;
+DROP FUNCTION IF EXISTS enqueue_benefit_push();
+DROP TRIGGER IF EXISTS programas_push_updated ON programas_fidelidad;
+DROP FUNCTION IF EXISTS enqueue_program_push();
+DROP TRIGGER IF EXISTS marcas_push_updated ON marcas;
+DROP FUNCTION IF EXISTS enqueue_brand_push();
+DROP FUNCTION IF EXISTS enqueue_brand_card_push(BIGINT);
+DROP TRIGGER IF EXISTS tarjetas_push_updated ON tarjetas;
+DROP FUNCTION IF EXISTS enqueue_card_push();
+DROP TABLE IF EXISTS push_notifications;
+DROP TABLE IF EXISTS push_tokens;

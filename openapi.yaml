@@ -826,6 +826,22 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/CardPageEnvelope' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /clientes/me/push-token:
+    post:
+      tags: [Clientes]
+      operationId: registerCurrentCustomerPushToken
+      summary: Registra o actualiza un token Expo del cliente autenticado
+      description: Un mismo cliente puede registrar varios dispositivos. Si se informa device_id, un token nuevo reemplaza el anterior de ese dispositivo.
+      x-puntazo-implementation: IMPLEMENTED
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PushTokenRequest' }
+      responses:
+        '200': { description: Token registrado, content: { application/json: { schema: { $ref: '#/components/schemas/PushTokenEnvelope' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /clientes/me/movimientos:
     get:
       tags: [Clientes]
@@ -1853,6 +1869,25 @@ components:
       required: [data, request_id]
       properties:
         data: { $ref: '#/components/schemas/Customer' }
+        request_id: { $ref: '#/components/schemas/RequestId' }
+    PushTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [expo_push_token]
+      properties:
+        expo_push_token: { type: string, pattern: '^(ExpoPushToken|ExponentPushToken)\[[A-Za-z0-9_-]{1,200}\]$' }
+        device_id: { type: string, minLength: 1, maxLength: 128 }
+    PushTokenEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [registered]
+          properties:
+            registered: { type: boolean, const: true }
         request_id: { $ref: '#/components/schemas/RequestId' }
     Card:
       type: object
