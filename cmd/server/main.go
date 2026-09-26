@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"clientesFrecuentes/internal/auth"
+	"clientesFrecuentes/internal/cardevents"
 	"clientesFrecuentes/internal/config"
 	"clientesFrecuentes/internal/handler"
 	"clientesFrecuentes/internal/mailer"
@@ -51,6 +52,8 @@ func main() {
 	workerCtx, stopWorker := context.WithCancel(context.Background())
 	defer stopWorker()
 	tokens := auth.NewTokens(cfg.JWTSecret, cfg.JWTIssuer)
+	cardEvents := cardevents.New(poolConfig.ConnConfig, logger)
+	go cardEvents.Run(workerCtx)
 	limiter := middleware.NewRateLimiter()
 	if cfg.RateLimitProvider == "redis" {
 		limiter, err = middleware.NewRedisRateLimiter(cfg.RedisURL, cfg.RateLimitPrefix, cfg.RateLimitTimeout, !cfg.Production && cfg.RateLimitDevFallback)
@@ -84,7 +87,7 @@ func main() {
 	if cfg.MercadoPagoProvider == "api" {
 		svc.Billing = mercadopago.New(cfg.MercadoPagoAPIURL, cfg.MercadoPagoAccessToken, cfg.MercadoPagoTimeout)
 	}
-	h := &handler.Handler{Service: svc, Repo: repo, Limiter: limiter, Uploads: middleware.NewUploadSemaphore(cfg.MediaUploadGlobalLimit, cfg.MediaUploadActorLimit), Logger: logger, TrustedProxyCount: cfg.TrustedProxyCount}
+	h := &handler.Handler{Service: svc, Repo: repo, Tokens: tokens, CardEvents: cardEvents, Limiter: limiter, Uploads: middleware.NewUploadSemaphore(cfg.MediaUploadGlobalLimit, cfg.MediaUploadActorLimit), Logger: logger, TrustedProxyCount: cfg.TrustedProxyCount}
 	router := newRouter(h, tokens, logger)
 	server := &http.Server{Addr: ":" + cfg.Port, Handler: router, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: cfg.ReadTimeout, WriteTimeout: cfg.WriteTimeout, IdleTimeout: cfg.IdleTimeout, MaxHeaderBytes: 32 << 10}
 	go func() {
@@ -97,6 +100,7 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
+	stopWorker() // Close active event streams before HTTP graceful shutdown.
 	ctx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 	if err := server.Shutdown(ctx); err != nil {

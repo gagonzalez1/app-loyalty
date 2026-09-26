@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"time"
 
+	"clientesFrecuentes/internal/auth"
+	"clientesFrecuentes/internal/cardevents"
 	"clientesFrecuentes/internal/middleware"
 	"clientesFrecuentes/internal/repository"
 	"clientesFrecuentes/internal/service"
@@ -17,6 +19,8 @@ import (
 type Handler struct {
 	Service           *service.Service
 	Repo              *repository.Repository
+	Tokens            *auth.Tokens
+	CardEvents        *cardevents.Broker
 	Limiter           *middleware.RateLimiter
 	Uploads           *middleware.UploadSemaphore
 	Logger            *slog.Logger
