@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"clientesFrecuentes/internal/model"
@@ -264,6 +265,11 @@ func (r *Repository) ConfirmMovement(ctx context.Context, in ConfirmInput, build
 		return IdempotentResult{}, err
 	}
 	if _, err = tx.Exec(ctx, `UPDATE solicitudes_idempotentes SET estado='COMPLETED',response_status=201,response_body=$2,completed_at=now() WHERE idempotency_key=$1`, in.Key, []byte(body)); err != nil {
+		return IdempotentResult{}, err
+	}
+	// PostgreSQL delivers a NOTIFY only if this transaction commits. Replayed
+	// idempotency requests return above and cannot emit a second card event.
+	if _, err = tx.Exec(ctx, `SELECT pg_notify('puntazo_customer_cards',$1)`, strconv.FormatInt(p.CustomerID, 10)); err != nil {
 		return IdempotentResult{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {

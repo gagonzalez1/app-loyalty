@@ -16,9 +16,16 @@ import (
 func newRouter(h *handler.Handler, tokens *auth.Tokens, logger *slog.Logger) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
-	r.Use(middleware.RequestContext(logger), middleware.Timeout(12*time.Second), middleware.Recovery(logger), middleware.CORS())
+	r.Use(middleware.RequestContext(logger), middleware.Recovery(logger), middleware.CORS())
 	r.NoRoute(func(c *gin.Context) { web.Error(c, http.StatusNotFound, "NOT_FOUND", "Recurso no encontrado", nil) })
-	v1 := r.Group("/v1")
+	// A stream must not inherit the REST deadline. Authentication still runs
+	// before the SSE handler, and the handler revalidates the session while open.
+	stream := r.Group("/v1")
+	stream.Use(middleware.RequireAuth(tokens, h.Repo))
+	stream.GET("/clientes/me/tarjetas/events", h.CardEventsStream)
+	rest := r.Group("")
+	rest.Use(middleware.Timeout(12 * time.Second))
+	v1 := rest.Group("/v1")
 	registerPublicRoutes(v1, h)
 	// Every domain below inherits authentication before its routes are registered.
 	authenticated := v1.Group("")
@@ -33,6 +40,6 @@ func newRouter(h *handler.Handler, tokens *auth.Tokens, logger *slog.Logger) *gi
 	registerMerchantRoutes(authenticated, h)
 	registerCustomerRoutes(authenticated, h)
 	registerMovementRoutes(authenticated, h)
-	registerLegacyRoutes(r, h, middleware.RequireAuth(tokens, h.Repo))
+	registerLegacyRoutes(rest, h, middleware.RequireAuth(tokens, h.Repo))
 	return r
 }

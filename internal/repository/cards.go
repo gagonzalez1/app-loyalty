@@ -2,9 +2,37 @@ package repository
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 
 	"clientesFrecuentes/internal/model"
 )
+
+// CardRevision includes the identity and version of every active card. It
+// changes when a card is created, removed, or its balance is confirmed.
+func (r *Repository) CardRevision(ctx context.Context, actorID int64) (string, error) {
+	rows, err := r.Pool.Query(ctx, `SELECT id,version FROM tarjetas WHERE usuario_id=$1 AND activo ORDER BY id`, actorID)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	hash := sha256.New()
+	var values [16]byte
+	for rows.Next() {
+		var id, version int64
+		if err := rows.Scan(&id, &version); err != nil {
+			return "", err
+		}
+		binary.BigEndian.PutUint64(values[:8], uint64(id))
+		binary.BigEndian.PutUint64(values[8:], uint64(version))
+		_, _ = hash.Write(values[:])
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+	return "v1-" + hex.EncodeToString(hash.Sum(nil)), nil
+}
 
 func (r *Repository) GetCustomer(ctx context.Context, actorID int64) (model.User, error) {
 	u, err := r.GetUserByID(ctx, actorID)

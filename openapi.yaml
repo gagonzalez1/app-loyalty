@@ -826,6 +826,37 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/CardPageEnvelope' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /clientes/me/tarjetas/events:
+    get:
+      tags: [Clientes]
+      summary: Notifica cambios confirmados en las tarjetas del cliente autenticado
+      operationId: streamCurrentCustomerCardEvents
+      x-puntazo-implementation: IMPLEMENTED
+      description: |
+        Flujo SSE autenticado con Bearer. Cada evento `cards` tiene un `id`
+        opaco que representa la revisión de las tarjetas activas del cliente y
+        `data: {"action":"REFRESH_CARDS"}`. Si falta `Last-Event-ID` o difiere
+        de la revisión actual, se emite un evento al conectar. Una confirmación
+        nueva emite otro evento sólo después del commit; un replay idempotente
+        no emite. El servidor envía comentarios de latido cada 20 segundos y
+        puede cerrar el flujo para revalidar la sesión; el cliente debe
+        reconectar con el último `id` recibido.
+      parameters:
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema: { type: string }
+          description: Revisión recibida en el último evento `cards`.
+      responses:
+        '200':
+          description: Flujo de eventos de tarjetas, sin identificadores de cliente ni saldos.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
   /clientes/me/push-token:
     post:
       tags: [Clientes]
