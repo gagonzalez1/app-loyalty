@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/backend.yml"
+      - ".github/workflows/deploy-testing.yml"
       - "cmd/**"
       - "internal/**"
       - "migrations/**"
@@ -13,9 +14,10 @@ on:
       - "go.sum"
       - "openapi.yaml"
   push:
-    branches: [main]
+    branches: [main, testing]
     paths:
       - ".github/workflows/backend.yml"
+      - ".github/workflows/deploy-testing.yml"
       - "cmd/**"
       - "internal/**"
       - "migrations/**"

@@ -1,0 +1,72 @@
+name: Deploy backend to Puntazo testing
+
+on:
+  push:
+    branches: [testing]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: puntazo-api-testing
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    uses: ./.github/workflows/backend.yml
+
+  deploy:
+    name: Deploy and verify testing
+    needs: verify
+    if: ${{ vars.PUNTAZO_TESTING_DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Confirm current remote testing
+        run: |
+          git fetch --no-tags origin testing
+          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+
+      - name: Confirm testing schema is compatible
+        run: |
+          latest_schema="$(find migrations -maxdepth 1 -type f -name '*.up.sql' -printf '%f\n' | sort | tail -n 1 | cut -c 1-4)"
+          current_schema="$(curl --fail --silent --show-error --max-time 10 \
+            https://api-testing.puntazo.pro/v1/version | jq -r '.schema_version // empty')"
+          test -n "$latest_schema"
+          if [ "$latest_schema" != "$current_schema" ]; then
+            echo "::error::Testing schema $current_schema differs from required $latest_schema; migrate before deployment."
+            exit 1
+          fi
+
+      - name: Deploy current testing
+        env:
+          COOLIFY_DEPLOY_TOKEN: ${{ secrets.COOLIFY_TESTING_DEPLOY_TOKEN }}
+          COOLIFY_APP_UUID: ${{ vars.COOLIFY_TESTING_API_UUID }}
+        run: |
+          test -n "$COOLIFY_DEPLOY_TOKEN"
+          test -n "$COOLIFY_APP_UUID"
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $COOLIFY_DEPLOY_TOKEN" \
+            "https://coolify.puntazo.pro/api/v1/deploy?uuid=$COOLIFY_APP_UUID&force=false"
+
+      - name: Wait for the deployed commit and readiness
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          for attempt in $(seq 1 90); do
+            actual="$(curl --fail --silent --show-error --max-time 10 \
+              https://api-testing.puntazo.pro/v1/version | jq -r '.commit // empty')" || actual=""
+            if [ "$actual" = "$EXPECTED_SHA" ] && \
+              curl --fail --silent --show-error --max-time 10 \
+                https://api-testing.puntazo.pro/v1/health/ready > /dev/null; then
+              echo "Testing backend serves $actual and is ready"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Testing backend did not become ready at $EXPECTED_SHA within 15 minutes" >&2
+          exit 1
