@@ -554,7 +554,7 @@ paths:
       responses:
         '200': { description: Operación persistida, content: { application/json: { schema: { $ref: '#/components/schemas/BranchOperationEnvelope' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { description: QUOTE_EXPIRED, QUOTE_CHANGED, IDEMPOTENCY_CONFLICT o IDEMPOTENCY_IN_PROGRESS }
+        '409': { description: 'QUOTE_EXPIRED, QUOTE_CHANGED, IDEMPOTENCY_CONFLICT o IDEMPOTENCY_IN_PROGRESS' }
   /marcas/{brand_id}/sucursales/altas/{operation_id}:
     parameters: [{ $ref: '#/components/parameters/BrandId' }, { name: operation_id, in: path, required: true, schema: { type: string, format: uuid } }]
     get:
