@@ -1,6 +1,6 @@
 # Branch proration local review
 
-Implemented locally, not deployed. A brand has one recurring subscription. Staff
+Implementation is gated and disabled by default. A brand has one recurring subscription. Staff
 accounts do not increase the subscription quantity. Only a current owner may
 quote, confirm, or inspect a billing operation.
 
@@ -45,8 +45,14 @@ billing, and production activation is hard-disabled. Duplicate approved payments
 provider keys and readback before activation. Live provider
 webhook delivery, arbitrary cycle anchors before this feature, late-settlement
 notification delivery, and commercial renewal timing must be
-verified separately before lifting the production gate. No live payment calls
-were made for local acceptance.
+verified separately before lifting the production gate. Local provider validation used an isolated Mercado Pago application with test
+buyer/seller accounts and fictitious cards, without real funds. Approval, rejection,
+plan-update recovery and duplicate webhook handling were verified. Automated
+POST refunds still returns HTTP 401 with cause 7 in that isolated application;
+a manual provider refund was detected correctly by reconciliation. Delayed real
+provider settlement and automatic refunds remain uncertified. Testing must keep
+BRANCH_PRORATION_ENABLED=false and BRANCH_PAYMENT_SIMULATOR=false; local
+credentials and fixture data must not be transferred to testing.
 
 Migration 0034 is expand-only and intentionally refuses destructive rollback to
 preserve financial history. Restore the prior application with the feature off
