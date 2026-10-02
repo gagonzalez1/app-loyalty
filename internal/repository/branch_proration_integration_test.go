@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"sync"
 	"testing"
 	"time"
@@ -15,7 +16,17 @@ import (
 
 func TestPostgresBranchProrationDurableSimulator(t *testing.T) {
 	pool := referralBillingPool(t)
-	ctx := t.Context()
+	// One connection reproduces pool exhaustion if a locked transaction obtains another connection.
+	pc := pool.Config()
+	pc.MaxConns = 1
+	limited, err := pgxpool.NewWithConfig(t.Context(), pc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(limited.Close)
+	pool = limited
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
 	repo := repository.New(pool)
 	var user, brand int64
 	if e := pool.QueryRow(ctx, `INSERT INTO usuarios(email,password_hash,nombre,tipo_cuenta) VALUES('branch@example.test','hash','Owner','PERSONAL_MARCA') RETURNING id`).Scan(&user); e != nil {
@@ -126,6 +137,13 @@ func TestPostgresBranchProrationDurableSimulator(t *testing.T) {
 	}
 	if _, e = svc.ConfirmBranch(ctx, user, brand, q.QuoteID, uuid.NewString()); !errors.Is(e, repository.ErrQuoteChanged) {
 		t.Fatalf("changed %v", e)
+	}
+	// Cancellation must use its transaction's connection too.
+	cancelled, e := repo.CancelSubscriptionLocked(ctx, user, brand, func(record repository.SubscriptionRecord) (model.BillingSubscriptionResult, error) {
+		return model.BillingSubscriptionResult{ID: record.ProviderID, ExternalReference: record.ExternalReference, Status: "cancelled"}, nil
+	})
+	if e != nil || cancelled.Status != "CANCELLED" {
+		t.Fatalf("single-connection cancellation: %+v %v", cancelled, e)
 	}
 	// Backend owner permission is independent of UI visibility.
 	if _, e = pool.Exec(ctx, `UPDATE membresias_marca SET rol='ADMINISTRADOR' WHERE usuario_id=$1`, user); e != nil {

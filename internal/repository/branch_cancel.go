@@ -26,7 +26,7 @@ func (r *Repository) CancelSubscriptionLocked(ctx context.Context, actor, brand 
 	if e = requireNoPendingBranch(ctx, tx, brand); e != nil {
 		return model.Subscription{}, e
 	}
-	record, e := r.GetSubscriptionRecord(ctx, brand)
+	record, e := subscriptionRecord(ctx, tx, brand)
 	if e != nil {
 		return model.Subscription{}, e
 	}
