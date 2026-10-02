@@ -86,7 +86,7 @@ func (r *Repository) ConfirmBranchQuote(ctx context.Context, actor, brand int64,
 	if e != nil {
 		return model.BranchOperation{}, e
 	}
-	if _, e = r.BillingContext(ctx, actor, brand); e != nil {
+	if _, e = billingContext(ctx, tx, actor, brand); e != nil {
 		return model.BranchOperation{}, e
 	}
 	var existingID, existingQuote string

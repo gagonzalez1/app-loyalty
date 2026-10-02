@@ -64,9 +64,17 @@ func requireNoActiveSubscription(ctx context.Context, tx pgx.Tx, brandID int64) 
 	return nil
 }
 
+type billingQuerier interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
 func (r *Repository) BillingContext(ctx context.Context, actorID, brandID int64) (BillingContext, error) {
+	return billingContext(ctx, r.Pool, actorID, brandID)
+}
+
+func billingContext(ctx context.Context, query billingQuerier, actorID, brandID int64) (BillingContext, error) {
 	var out BillingContext
-	err := r.Pool.QueryRow(ctx, `SELECT u.email::text,(SELECT count(*) FROM sucursales s WHERE s.marca_id=$2 AND s.activo AND s.deleted_at IS NULL),p.tipo,m.trial_started_at,m.trial_start_estimated FROM membresias_marca mm JOIN usuarios u ON u.id=mm.usuario_id JOIN marcas m ON m.id=mm.marca_id AND m.activo JOIN programas_fidelidad p ON p.marca_id=m.id AND p.activo WHERE mm.usuario_id=$1 AND mm.marca_id=$2 AND mm.activo AND mm.rol='PROPIETARIO'`, actorID, brandID).Scan(&out.PayerEmail, &out.ActiveBranches, &out.ProgramType, &out.TrialStartedAt, &out.TrialStartEstimated)
+	err := query.QueryRow(ctx, `SELECT u.email::text,(SELECT count(*) FROM sucursales s WHERE s.marca_id=$2 AND s.activo AND s.deleted_at IS NULL),p.tipo,m.trial_started_at,m.trial_start_estimated FROM membresias_marca mm JOIN usuarios u ON u.id=mm.usuario_id JOIN marcas m ON m.id=mm.marca_id AND m.activo JOIN programas_fidelidad p ON p.marca_id=m.id AND p.activo WHERE mm.usuario_id=$1 AND mm.marca_id=$2 AND mm.activo AND mm.rol='PROPIETARIO'`, actorID, brandID).Scan(&out.PayerEmail, &out.ActiveBranches, &out.ProgramType, &out.TrialStartedAt, &out.TrialStartEstimated)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return out, ErrForbidden
 	}
@@ -80,9 +88,13 @@ func (r *Repository) BillingContext(ctx context.Context, actorID, brandID int64)
 }
 
 func (r *Repository) GetSubscriptionRecord(ctx context.Context, brandID int64) (SubscriptionRecord, error) {
+	return subscriptionRecord(ctx, r.Pool, brandID)
+}
+
+func subscriptionRecord(ctx context.Context, query billingQuerier, brandID int64) (SubscriptionRecord, error) {
 	var out SubscriptionRecord
 	s := &out.Subscription
-	err := r.Pool.QueryRow(ctx, `SELECT marca_id,proveedor,estado,moneda,precio_sucursal_minor,cantidad_sucursales,importe_mensual_minor,COALESCE(checkout_url,''),proximo_cobro_at,updated_at,trial_ends_at,checkout_rejected,COALESCE(proveedor_suscripcion_id,''),referencia_externa,trial_months,COALESCE(full_unit_price_minor,precio_sucursal_minor)*cantidad_sucursales,COALESCE((SELECT greatest(a.discount_charges-count(c.provider_invoice_id),0) FROM referral_attributions a LEFT JOIN referral_charges c ON c.brand_id=a.brand_id WHERE a.brand_id=suscripciones_marca.marca_id GROUP BY a.discount_charges),0) FROM suscripciones_marca WHERE marca_id=$1`, brandID).Scan(&s.BrandID, &s.Provider, &s.Status, &s.Currency, &s.UnitAmountCents, &s.ActiveBranches, &s.MonthlyAmountCents, &s.CheckoutURL, &s.NextPaymentDate, &s.UpdatedAt, &s.TrialEndsAt, &s.CheckoutRejected, &out.ProviderID, &out.ExternalReference, &out.TrialMonths, &s.FullMonthlyAmountCents, &s.DiscountRemainingCharges)
+	err := query.QueryRow(ctx, `SELECT marca_id,proveedor,estado,moneda,precio_sucursal_minor,cantidad_sucursales,importe_mensual_minor,COALESCE(checkout_url,''),proximo_cobro_at,updated_at,trial_ends_at,checkout_rejected,COALESCE(proveedor_suscripcion_id,''),referencia_externa,trial_months,COALESCE(full_unit_price_minor,precio_sucursal_minor)*cantidad_sucursales,COALESCE((SELECT greatest(a.discount_charges-count(c.provider_invoice_id),0) FROM referral_attributions a LEFT JOIN referral_charges c ON c.brand_id=a.brand_id WHERE a.brand_id=suscripciones_marca.marca_id GROUP BY a.discount_charges),0) FROM suscripciones_marca WHERE marca_id=$1`, brandID).Scan(&s.BrandID, &s.Provider, &s.Status, &s.Currency, &s.UnitAmountCents, &s.ActiveBranches, &s.MonthlyAmountCents, &s.CheckoutURL, &s.NextPaymentDate, &s.UpdatedAt, &s.TrialEndsAt, &s.CheckoutRejected, &out.ProviderID, &out.ExternalReference, &out.TrialMonths, &s.FullMonthlyAmountCents, &s.DiscountRemainingCharges)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return out, ErrNotFound
 	}
