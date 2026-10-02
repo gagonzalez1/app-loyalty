@@ -205,3 +205,25 @@ func (h *Handler) BrandMetrics(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, web.Envelope[model.BrandMetricsSummary]{Data: data, RequestID: web.RequestID(c)})
 }
+
+func (h *Handler) BrandPeriodMetrics(c *gin.Context) {
+	a, ok := actor(c)
+	if !ok {
+		return
+	}
+	if a.AccountType != "PERSONAL_MARCA" {
+		writeErr(c, service.ErrForbidden)
+		return
+	}
+	brandID, err := positiveID(c.Param("brand_id"))
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	data, err := h.Service.BrandPeriodMetrics(c.Request.Context(), a.ID, brandID, c.Query("period"), c.Query("date"))
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, web.Envelope[model.BrandPeriodMetrics]{Data: data, RequestID: web.RequestID(c)})
+}

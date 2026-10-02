@@ -481,6 +481,27 @@ type BrandMetricsSummary struct {
 	PointsRedeemed      int64      `json:"points_redeemed"`
 	LastMovementAt      *time.Time `json:"last_movement_at"`
 }
+type BrandPeriodBucket struct {
+	Label         string `json:"label"`
+	Accumulations int64  `json:"accumulations"`
+	Redemptions   int64  `json:"redemptions"`
+}
+type BrandPeriodMetrics struct {
+	Period          string              `json:"period"`
+	Date            string              `json:"date"`
+	Timezone        string              `json:"timezone"`
+	StartAt         time.Time           `json:"start_at"`
+	EndAt           time.Time           `json:"end_at"`
+	ProgramType     string              `json:"program_type"`
+	CustomersServed int64               `json:"customers_served"`
+	Accumulations   int64               `json:"accumulations"`
+	Redemptions     int64               `json:"redemptions"`
+	StampsIssued    int64               `json:"stamps_issued"`
+	StampsRedeemed  int64               `json:"stamps_redeemed"`
+	PointsIssued    int64               `json:"points_issued"`
+	PointsRedeemed  int64               `json:"points_redeemed"`
+	Series          []BrandPeriodBucket `json:"series"`
+}
 type MovementPreviewRequest struct {
 	Operation    string `json:"operation"`
 	QRToken      string `json:"qr_token,omitempty"`

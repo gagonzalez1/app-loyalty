@@ -31,6 +31,7 @@ func registerMerchantRoutes(r *gin.RouterGroup, h *handler.Handler) {
 	r.GET("/marcas/:brand_id/movimientos", h.BrandMovements)
 	r.GET("/marcas/:brand_id/clientes", h.BrandCustomers)
 	r.GET("/marcas/:brand_id/metricas/resumen", h.BrandMetrics)
+	r.GET("/marcas/:brand_id/metricas/periodo", h.BrandPeriodMetrics)
 	r.GET("/marcas/:brand_id/imagenes", h.BrandImages)
 	r.POST("/marcas/:brand_id/imagenes", h.UploadBrandImage)
 	r.DELETE("/marcas/:brand_id/imagenes/:image_id", h.DeleteBrandImage)

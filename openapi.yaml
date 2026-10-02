@@ -750,7 +750,7 @@ paths:
       summary: Totales operativos históricos de la marca
       description: |
         Resumen de sólo lectura calculado desde tarjetas y movimientos confirmados.
-        No implementa todavía períodos, comparaciones, predicciones ni drill-down de PC-08.
+        Los períodos calendario se consultan en /metricas/periodo. Comparaciones, predicciones y drill-down de PC-08 siguen pendientes.
       x-puntazo-implementation: IMPLEMENTED
       parameters:
         - $ref: '#/components/parameters/BrandId'
@@ -762,6 +762,39 @@ paths:
               schema: { $ref: '#/components/schemas/OperationalSummaryEnvelope' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /marcas/{brand_id}/metricas/periodo:
+    get:
+      tags: [Analíticas]
+      operationId: getBrandCalendarMetrics
+      summary: Actividad confirmada en un período calendario de la marca
+      description: |
+        Sólo propietario PERSONAL_MARCA activo. Incluye todas las sucursales y preserva movimientos
+        de clientes desactivados o anonimizados. Semana de lunes a domingo; mes calendario.
+        Intervalo [start_at, end_at) en zona_horaria de la marca, calculado en un mismo snapshot
+        con autorización, totales y serie. date omitida usa hoy en esa zona; fecha futura rechazada.
+        Serie de 24 horas para day, siete fechas para week y días del mes para month, incluyendo
+        ceros. Horas locales repetidas por DST se combinan; horas inexistentes conservan cero.
+        Una fecha local completamente omitida por cambio de zona horaria se rechaza.
+      x-puntazo-implementation: IMPLEMENTED
+      parameters:
+        - $ref: '#/components/parameters/BrandId'
+        - name: period
+          in: query
+          required: true
+          schema: { type: string, enum: [day, week, month] }
+        - name: date
+          in: query
+          required: false
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Totales y serie del período seleccionado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CalendarMetricsEnvelope' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /marcas/{brand_id}/imagenes:
     get:
       tags: [Marcas]
@@ -3101,6 +3134,42 @@ components:
       required: [data, request_id]
       properties:
         data: { $ref: '#/components/schemas/OperationalSummary' }
+        request_id: { $ref: '#/components/schemas/RequestId' }
+    CalendarMetricsBucket:
+      type: object
+      additionalProperties: false
+      required: [label, accumulations, redemptions]
+      properties:
+        label: { type: string, description: 'HH:00 para day; YYYY-MM-DD para week/month' }
+        accumulations: { type: integer, format: int64, minimum: 0 }
+        redemptions: { type: integer, format: int64, minimum: 0 }
+    CalendarMetrics:
+      type: object
+      additionalProperties: false
+      required: [period, date, timezone, start_at, end_at, program_type, customers_served, accumulations, redemptions, stamps_issued, stamps_redeemed, points_issued, points_redeemed, series]
+      properties:
+        period: { type: string, enum: [day, week, month] }
+        date: { type: string, format: date }
+        timezone: { type: string, description: Zona IANA de la marca }
+        start_at: { type: string, format: date-time }
+        end_at: { type: string, format: date-time, description: Límite exclusivo }
+        program_type: { type: string, enum: [SELLOS, PUNTOS, ''] }
+        customers_served: { type: integer, format: int64, minimum: 0, description: Clientes distintos con cualquier movimiento confirmado en el intervalo }
+        accumulations: { type: integer, format: int64, minimum: 0 }
+        redemptions: { type: integer, format: int64, minimum: 0 }
+        stamps_issued: { type: integer, format: int64, minimum: 0 }
+        stamps_redeemed: { type: integer, format: int64, minimum: 0 }
+        points_issued: { type: integer, format: int64, minimum: 0 }
+        points_redeemed: { type: integer, format: int64, minimum: 0 }
+        series:
+          type: array
+          items: { $ref: '#/components/schemas/CalendarMetricsBucket' }
+    CalendarMetricsEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data: { $ref: '#/components/schemas/CalendarMetrics' }
         request_id: { $ref: '#/components/schemas/RequestId' }
     MovementOperation:
       type: string
