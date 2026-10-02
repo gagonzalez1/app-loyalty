@@ -528,6 +528,57 @@ paths:
       x-puntazo-implementation: IMPLEMENTED
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateBranchRequest' } } } }
       responses: { '201': { description: Sucursal creada, content: { application/json: { schema: { $ref: '#/components/schemas/BranchEnvelope' } } } }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /marcas/{brand_id}/sucursales/cotizacion:
+    parameters: [{ $ref: '#/components/parameters/BrandId' }]
+    post:
+      tags: [Marcas]
+      operationId: quoteBranchProration
+      summary: Cotiza el alta de una sucursal con precio contratado y días calendario
+      description: Implementado en localhost. Requiere propietario y BRANCH_PRORATION_ENABLED; producción bloqueada hasta certificación.
+      x-puntazo-implementation: IMPLEMENTED_LOCAL
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateBranchRequest' } } } }
+      responses:
+        '200': { description: Cotización inmutable, content: { application/json: { schema: { $ref: '#/components/schemas/BranchQuoteEnvelope' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: QUOTE_CHANGED o suscripción no preparada }
+        '503': { description: BILLING_UNAVAILABLE cuando la función está deshabilitada }
+  /marcas/{brand_id}/sucursales/altas:
+    parameters: [{ $ref: '#/components/parameters/BrandId' }]
+    post:
+      tags: [Marcas]
+      operationId: confirmBranchProration
+      summary: Reserva un alta idempotente sin activar la sucursal antes del pago
+      x-puntazo-implementation: IMPLEMENTED_LOCAL
+      parameters: [{ name: Idempotency-Key, in: header, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [quote_id], properties: { quote_id: { type: string, format: uuid } } } } } }
+      responses:
+        '200': { description: Operación persistida, content: { application/json: { schema: { $ref: '#/components/schemas/BranchOperationEnvelope' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: QUOTE_EXPIRED, QUOTE_CHANGED, IDEMPOTENCY_CONFLICT o IDEMPOTENCY_IN_PROGRESS }
+  /marcas/{brand_id}/sucursales/altas/{operation_id}:
+    parameters: [{ $ref: '#/components/parameters/BrandId' }, { name: operation_id, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      tags: [Marcas]
+      operationId: getBranchProrationOperation
+      summary: Consulta y reconcilia el estado de pago del alta
+      x-puntazo-implementation: IMPLEMENTED_LOCAL
+      responses:
+        '200': { description: Estado persistido, content: { application/json: { schema: { $ref: '#/components/schemas/BranchOperationEnvelope' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /marcas/{brand_id}/sucursales/altas/{operation_id}/simulacion:
+    parameters: [{ $ref: '#/components/parameters/BrandId' }, { name: operation_id, in: path, required: true, schema: { type: string, format: uuid } }]
+    post:
+      tags: [Marcas]
+      operationId: simulateBranchProrationPayment
+      summary: Simula el resultado local del pago sin movimientos de dinero
+      description: Sólo habilitada con simulador, origen loopback, APP_ENV distinto de production y sin token Mercado Pago.
+      x-puntazo-implementation: IMPLEMENTED_LOCAL
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [action], properties: { action: { type: string, enum: [approve, reject, pending, update_fail, recover, permanent_fail, refund_fail] } } } } } }
+      responses:
+        '200': { description: Resultado simulado persistido, content: { application/json: { schema: { $ref: '#/components/schemas/BranchOperationEnvelope' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Operación ya terminada }
   /marcas/{brand_id}/sucursales/{resource_id}:
     parameters: [{ $ref: '#/components/parameters/BrandId' }, { $ref: '#/components/parameters/ResourceId' }]
     get:
@@ -2808,6 +2859,46 @@ components:
         version: { type: integer, minimum: 1 }
         created_at: { $ref: '#/components/schemas/Timestamp' }
         updated_at: { $ref: '#/components/schemas/Timestamp' }
+    BranchQuote:
+      type: object
+      required: [quote_id, expires_at, currency, current_monthly_amount_cents, new_monthly_amount_cents, proration_amount_cents, unit_amount_cents, remaining_days, cycle_days, period_start, period_end, payment_required, simulation]
+      properties:
+        quote_id: { type: string, format: uuid }
+        expires_at: { type: string, format: date-time }
+        currency: { type: string, const: ARS }
+        current_monthly_amount_cents: { type: integer, format: int64 }
+        new_monthly_amount_cents: { type: integer, format: int64 }
+        proration_amount_cents: { type: integer, format: int64 }
+        unit_amount_cents: { type: integer, format: int64 }
+        remaining_days: { type: integer }
+        cycle_days: { type: integer }
+        period_start: { type: string, format: date }
+        period_end: { type: string, format: date }
+        payment_required: { type: boolean }
+        simulation: { type: boolean }
+    BranchOperation:
+      type: object
+      required: [id, status, quote, simulated]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [PAYMENT_PENDING, PLAN_UPDATING, COMPLETED, PAYMENT_REJECTED, REFUND_PENDING, REFUNDED, FAILED] }
+        quote: { $ref: '#/components/schemas/BranchQuote' }
+        branch: { $ref: '#/components/schemas/Branch' }
+        simulated: { type: boolean }
+        checkout_url: { type: string }
+        error_code: { type: string }
+    BranchQuoteEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data: { $ref: '#/components/schemas/BranchQuote' }
+        request_id: { type: string }
+    BranchOperationEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data: { $ref: '#/components/schemas/BranchOperation' }
+        request_id: { type: string }
     CreateBranchRequest:
       type: object
       required: [nombre]

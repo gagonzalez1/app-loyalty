@@ -11,6 +11,7 @@ type BillingInvoice struct {
 
 // BillingPayment is fetched independently so a refunded payment cannot accrue rewards.
 type BillingPayment struct {
-	ID, Status, Currency       string
-	AmountMinor, RefundedMinor int64
+	ID, Status, Currency, ExternalReference string
+	AmountMinor, RefundedMinor              int64
+	ApprovedAt                              *time.Time
 }

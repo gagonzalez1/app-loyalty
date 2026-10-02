@@ -34,7 +34,7 @@ func (s *Service) Subscription(ctx context.Context, actorID, brandID int64) (mod
 		if priceErr != nil {
 			return model.Subscription{}, priceErr
 		}
-		out := model.Subscription{BrandID: brandID, Provider: "MERCADO_PAGO", Status: "NOT_CONFIGURED", Currency: "ARS", UnitAmountCents: discounted, ActiveBranches: billing.ActiveBranches, MonthlyAmountCents: discounted * billing.ActiveBranches, FullMonthlyAmountCents: unitPrice * billing.ActiveBranches, DiscountRemainingCharges: remaining, ProviderConfigured: s.Billing != nil, UpdatedAt: s.Now()}
+		out := model.Subscription{BrandID: brandID, Provider: "MERCADO_PAGO", Status: "NOT_CONFIGURED", Currency: "ARS", UnitAmountCents: discounted, ActiveBranches: billing.ActiveBranches, MonthlyAmountCents: discounted * billing.ActiveBranches, FullMonthlyAmountCents: unitPrice * billing.ActiveBranches, DiscountRemainingCharges: remaining, ProviderConfigured: (s.Billing != nil || s.Config.BranchPaymentSimulator), UpdatedAt: s.Now()}
 		s.setSubscriptionTrial(&out, billing)
 		return out, nil
 	}
@@ -76,7 +76,7 @@ func (s *Service) Subscription(ctx context.Context, actorID, brandID int64) (mod
 		}
 	}
 	s.setSubscriptionTrial(&record.Subscription, billing)
-	record.Subscription.ProviderConfigured = s.Billing != nil
+	record.Subscription.ProviderConfigured = s.Billing != nil || s.Config.BranchPaymentSimulator
 	return record.Subscription, nil
 }
 
@@ -182,6 +182,12 @@ func (s *Service) ApplySubscriptionWebhook(ctx context.Context, notificationID, 
 	}
 	if notificationID == "" || resourceID == "" {
 		return ErrInvalidRequest
+	}
+	if topic == "payment" && s.Config.BranchProrationEnabled {
+		handled, e := s.applyBranchPaymentWebhook(ctx, resourceID)
+		if handled || e != nil {
+			return e
+		}
 	}
 	if topic == "subscription_authorized_payment" || topic == "payment" {
 		return s.applyReferralPaymentWebhook(ctx, notificationID, topic, resourceID)
@@ -305,6 +311,26 @@ func (s *Service) CancelSubscription(ctx context.Context, actorID, brandID int64
 	}
 	if _, ok := s.subscriptionUnitPrice(billing.ProgramType); !ok {
 		return model.Subscription{}, ErrInvalidRequest
+	}
+	if s.Config.BranchProrationEnabled {
+		out, e := s.Repo.CancelSubscriptionLocked(ctx, actorID, brandID, func(record repository.SubscriptionRecord) (model.BillingSubscriptionResult, error) {
+			if record.Subscription.Status == "CANCELLED" {
+				return model.BillingSubscriptionResult{ID: record.ProviderID, ExternalReference: record.ExternalReference, Status: "cancelled"}, nil
+			}
+			if record.Subscription.Status == "CREATING" {
+				return model.BillingSubscriptionResult{}, ErrBillingInProgress
+			}
+			provider, e := s.Billing.CancelSubscription(ctx, record.ProviderID, key.String())
+			if e != nil {
+				return provider, ErrBillingProviderFailure
+			}
+			if provider.ID != record.ProviderID || provider.ExternalReference != record.ExternalReference || (provider.Status != "cancelled" && provider.Status != "canceled") {
+				return provider, ErrBillingProviderFailure
+			}
+			return provider, nil
+		})
+		out.ProviderConfigured = true
+		return out, e
 	}
 	record, err := s.Repo.GetSubscriptionRecord(ctx, brandID)
 	if err != nil {

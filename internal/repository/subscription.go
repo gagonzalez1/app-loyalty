@@ -259,10 +259,21 @@ func (r *Repository) RecordReferralInvoice(ctx context.Context, notificationID s
 			return historyErr
 		}
 	}
+	if !validAmount && !invoice.CreatedAt.IsZero() {
+		historyErr := tx.QueryRow(ctx, `SELECT h.full_unit_price_minor*h.branches FROM subscription_quantity_history h JOIN branch_operations o ON o.id=h.operation_id JOIN branch_quotes q ON q.id=o.quote_id WHERE q.subscription_snapshot->>'provider_id'=$1 AND $2>=h.valid_from AND $2<h.valid_until AND h.unit_price_minor*h.branches=$3 ORDER BY h.valid_until DESC LIMIT 1`, invoice.SubscriptionID, invoice.CreatedAt, invoice.AmountMinor).Scan(&fullAmountMinor)
+		if historyErr == nil {
+			validAmount = true
+		} else if !errors.Is(historyErr, pgx.ErrNoRows) {
+			return historyErr
+		}
+	}
 	if invoice.AmountMinor != payment.AmountMinor || !validAmount {
 		return fmt.Errorf("referral invoice amount does not match price snapshot")
 	}
 	if index == discountCharges && discountCharges > 0 && expectedUnit != fullUnit {
+		if err = requireNoPendingBranch(ctx, tx, brandID); err != nil {
+			return err
+		}
 		fullAmount := fullUnit * branches
 		if err = advance(ctx, invoice.SubscriptionID, fullAmount, "referral-full-price:"+invoice.SubscriptionID); err != nil {
 			return err

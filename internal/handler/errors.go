@@ -33,6 +33,10 @@ func writeErr(c *gin.Context, err error) {
 	}
 
 	switch {
+	case errors.Is(err, repository.ErrQuoteExpired):
+		web.Error(c, http.StatusConflict, "QUOTE_EXPIRED", "La cotización venció. Revisá el importe actualizado.", nil)
+	case errors.Is(err, repository.ErrQuoteChanged):
+		web.Error(c, http.StatusConflict, "QUOTE_CHANGED", "El plan cambió. Revisá una nueva cotización.", nil)
 	case errors.Is(err, service.ErrRegistrationProfileRequired):
 		web.Error(c, http.StatusUnprocessableEntity, "REGISTRATION_PROFILE_REQUIRED", "Completá nombre y apellido. Actualizá Puntazo si tu aplicación no muestra ambos campos.", map[string]any{"next_action": "COMPLETE_REGISTRATION_PROFILE"})
 	case errors.Is(err, repository.ErrEmailUnavailable):

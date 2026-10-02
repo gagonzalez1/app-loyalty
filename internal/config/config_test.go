@@ -176,3 +176,30 @@ func TestProductionRequiresVerifiedSMTPIdentity(t *testing.T) {
 		t.Fatal("production accepted an insecure PUBLIC_APP_URL")
 	}
 }
+
+func TestBranchSimulatorIsolationGate(t *testing.T) {
+	for _, tt := range []struct {
+		name, app, provider, token, env string
+		want                            bool
+	}{
+		{"local", "http://localhost:4175", "disabled", "", "development", true},
+		{"public", "https://testing.puntazo.pro", "disabled", "", "development", false},
+		{"real provider", "http://localhost:4175", "api", "token", "development", false},
+		{"stray token", "http://localhost:4175", "disabled", "token", "development", false},
+		{"production", "https://puntazo.pro", "disabled", "", "production", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			setRequiredEnv(t)
+			t.Setenv("BRANCH_PRORATION_ENABLED", "true")
+			t.Setenv("BRANCH_PAYMENT_SIMULATOR", "true")
+			t.Setenv("PUBLIC_APP_URL", tt.app)
+			t.Setenv("MERCADO_PAGO_PROVIDER", tt.provider)
+			t.Setenv("MERCADO_PAGO_ACCESS_TOKEN", tt.token)
+			t.Setenv("APP_ENV", tt.env)
+			_, e := Load()
+			if (e == nil) != tt.want {
+				t.Fatalf("gate error=%v want allowed%v", e, tt.want)
+			}
+		})
+	}
+}

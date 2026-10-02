@@ -92,9 +92,14 @@ func main() {
 		svc.Billing = mercadopago.New(cfg.MercadoPagoAPIURL, cfg.MercadoPagoAccessToken, cfg.MercadoPagoTimeout)
 	}
 	go svc.RunSubscriptionPriceChanges(workerCtx, logger)
+	go svc.RunBranchProration(workerCtx, logger)
 	h := &handler.Handler{Service: svc, Repo: repo, Tokens: tokens, CardEvents: cardEvents, Limiter: limiter, Uploads: middleware.NewUploadSemaphore(cfg.MediaUploadGlobalLimit, cfg.MediaUploadActorLimit), Logger: logger, TrustedProxyCount: cfg.TrustedProxyCount}
 	router := newRouter(h, tokens, logger)
-	server := &http.Server{Addr: ":" + cfg.Port, Handler: router, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: cfg.ReadTimeout, WriteTimeout: cfg.WriteTimeout, IdleTimeout: cfg.IdleTimeout, MaxHeaderBytes: 32 << 10}
+	listenAddress := ":" + cfg.Port
+	if cfg.BranchPaymentSimulator || (cfg.BranchProrationEnabled && !cfg.Production) {
+		listenAddress = "127.0.0.1:" + cfg.Port
+	}
+	server := &http.Server{Addr: listenAddress, Handler: router, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: cfg.ReadTimeout, WriteTimeout: cfg.WriteTimeout, IdleTimeout: cfg.IdleTimeout, MaxHeaderBytes: 32 << 10}
 	go func() {
 		logger.Info("server starting", "port", cfg.Port, "version", cfg.AppVersion)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

@@ -178,11 +178,13 @@ func (c *Client) GetPayment(ctx context.Context, id string) (model.BillingPaymen
 		return model.BillingPayment{}, errors.New("invalid payment id")
 	}
 	var raw struct {
-		ID       json.Number `json:"id"`
-		Status   string      `json:"status"`
-		Currency string      `json:"currency_id"`
-		Amount   json.Number `json:"transaction_amount"`
-		Refunded json.Number `json:"transaction_amount_refunded"`
+		ID                json.Number `json:"id"`
+		Status            string      `json:"status"`
+		Currency          string      `json:"currency_id"`
+		Amount            json.Number `json:"transaction_amount"`
+		Refunded          json.Number `json:"transaction_amount_refunded"`
+		ExternalReference string      `json:"external_reference"`
+		ApprovedAt        *time.Time  `json:"date_approved"`
 	}
 	if err := c.getJSON(ctx, "/v1/payments/"+id, &raw); err != nil {
 		return model.BillingPayment{}, err
@@ -198,7 +200,7 @@ func (c *Client) GetPayment(ctx context.Context, id string) (model.BillingPaymen
 	if err != nil {
 		return model.BillingPayment{}, err
 	}
-	return model.BillingPayment{ID: raw.ID.String(), Status: raw.Status, Currency: raw.Currency, AmountMinor: amount, RefundedMinor: refunded}, nil
+	return model.BillingPayment{ID: raw.ID.String(), Status: raw.Status, Currency: raw.Currency, AmountMinor: amount, RefundedMinor: refunded, ExternalReference: raw.ExternalReference, ApprovedAt: raw.ApprovedAt}, nil
 }
 
 func (c *Client) GetSubscription(ctx context.Context, id string) (model.BillingSubscriptionResult, error) {

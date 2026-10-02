@@ -238,7 +238,7 @@ func (r *Repository) ApplyNextSubscriptionPriceChange(ctx context.Context, updat
 	var program, provider, external string
 	err = tx.QueryRow(ctx, `SELECT i.change_id,i.brand_id,i.provider_subscription_id,i.external_reference,j.program_type,j.unit_price_minor,j.price_version
  FROM subscription_price_change_items i JOIN subscription_price_changes j ON j.id=i.change_id
- WHERE i.status='PENDING' ORDER BY j.created_at,i.brand_id FOR UPDATE OF i SKIP LOCKED LIMIT 1`).Scan(&key, &brand, &provider, &external, &program, &amount, &version)
+ WHERE i.status='PENDING' AND NOT EXISTS(SELECT 1 FROM branch_operations bo WHERE bo.marca_id=i.brand_id AND bo.status IN('PAYMENT_PENDING','PLAN_UPDATING','REFUND_PENDING')) ORDER BY j.created_at,i.brand_id FOR UPDATE OF i SKIP LOCKED LIMIT 1`).Scan(&key, &brand, &provider, &external, &program, &amount, &version)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
@@ -271,6 +271,12 @@ func (r *Repository) ApplyNextSubscriptionPriceChange(ctx context.Context, updat
 	}
 	if err != nil {
 		return true, err
+	}
+	if pendingErr := requireNoPendingBranch(ctx, tx, brand); pendingErr != nil {
+		if errors.Is(pendingErr, ErrIdempotencyInProgress) {
+			return false, nil
+		}
+		return true, pendingErr
 	}
 	if !active || actualProvider != provider || actualExternal != external || (status != "PENDING" && status != "AUTHORIZED" && status != "PAUSED") {
 		return finish("SKIPPED", nil)

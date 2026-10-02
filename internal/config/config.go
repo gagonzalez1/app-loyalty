@@ -15,6 +15,8 @@ import (
 const MaxJSONBytes int64 = 1 << 20
 
 type Config struct {
+	BranchProrationEnabled    bool
+	BranchPaymentSimulator    bool
 	GooglePlacesAPIKey        string
 	DatabaseURL               string
 	JWTSecret                 string
@@ -80,6 +82,7 @@ type Config struct {
 func Load() (Config, error) {
 	s3Endpoint := strings.TrimSpace(os.Getenv("S3_ENDPOINT"))
 	c := Config{
+		BranchProrationEnabled: envBool("BRANCH_PRORATION_ENABLED", false), BranchPaymentSimulator: envBool("BRANCH_PAYMENT_SIMULATOR", false),
 		GooglePlacesAPIKey: strings.TrimSpace(os.Getenv("GOOGLE_PLACES_API_KEY")), DatabaseURL: os.Getenv("DATABASE_URL"), JWTSecret: os.Getenv("JWT_SECRET"), JWTIssuer: envDefault("JWT_ISSUER", "puntazo"),
 		QRPepper:          os.Getenv("QR_PEPPER"),
 		DemoSignupEnabled: envBool("DEMO_SIGNUP_ENABLED", false), AppVersion: envDefault("APP_VERSION", "dev"),
@@ -89,7 +92,7 @@ func Load() (Config, error) {
 		SMTPHost:             strings.TrimSpace(os.Getenv("SMTP_HOST")), SMTPPort: envInt("SMTP_PORT", 587), SMTPUsername: os.Getenv("SMTP_USERNAME"), SMTPPassword: os.Getenv("SMTP_PASSWORD"), SMTPTLSMode: strings.ToLower(envDefault("SMTP_TLS_MODE", "starttls")), MailPollInterval: time.Duration(envInt("MAIL_POLL_INTERVAL_SECONDS", 5)) * time.Second,
 		MediaProvider: strings.ToLower(envDefault("MEDIA_PROVIDER", "disabled")), S3Endpoint: s3Endpoint, S3PublicEndpoint: strings.TrimSpace(envDefault("S3_PUBLIC_ENDPOINT", s3Endpoint)), S3Region: envDefault("S3_REGION", "us-east-1"), S3Bucket: strings.TrimSpace(os.Getenv("S3_BUCKET")), S3AccessKeyID: os.Getenv("S3_ACCESS_KEY_ID"), S3SecretAccessKey: os.Getenv("S3_SECRET_ACCESS_KEY"), S3ServerSideEncryption: strings.ToUpper(envDefault("S3_SERVER_SIDE_ENCRYPTION", "AES256")), MediaURLTTL: time.Duration(envInt("MEDIA_URL_TTL_SECONDS", 300)) * time.Second, MediaCleanupInterval: time.Duration(envInt("MEDIA_CLEANUP_INTERVAL_SECONDS", 60)) * time.Second, MediaUploadGlobalLimit: envInt("MEDIA_UPLOAD_GLOBAL_CONCURRENCY", 8), MediaUploadActorLimit: envInt("MEDIA_UPLOAD_ACTOR_CONCURRENCY", 2),
 		RetentionInterval: time.Duration(envInt("RETENTION_INTERVAL_SECONDS", 300)) * time.Second, RetentionBatchSize: envInt("RETENTION_BATCH_SIZE", 500), PreviewRetention: time.Duration(envInt("PREVIEW_RETENTION_HOURS", 168)) * time.Hour, IdempotencyRetention: time.Duration(envInt("IDEMPOTENCY_RETENTION_HOURS", 720)) * time.Hour, SessionRetention: time.Duration(envInt("SESSION_RETENTION_HOURS", 720)) * time.Hour, IdentityTokenRetention: time.Duration(envInt("IDENTITY_TOKEN_RETENTION_HOURS", 168)) * time.Hour, OutboxRedactAfter: time.Duration(envInt("OUTBOX_REDACT_AFTER_HOURS", 168)) * time.Hour, OutboxRetention: time.Duration(envInt("OUTBOX_RETENTION_HOURS", 720)) * time.Hour,
-		GitCommit: envDefault("GIT_COMMIT", "0000000"), ExpectedSchemaVersion: envDefault("EXPECTED_SCHEMA_VERSION", "0033"),
+		GitCommit: envDefault("GIT_COMMIT", "0000000"), ExpectedSchemaVersion: envDefault("EXPECTED_SCHEMA_VERSION", "0034"),
 		Port: envDefault("PORT", "8080"), TrustedProxyCount: envInt("TRUSTED_PROXY_COUNT", 0),
 		ReadTimeout: 10 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second,
 		RateLimitProvider: strings.ToLower(envDefault("RATE_LIMIT_PROVIDER", "memory")), RedisURL: strings.TrimSpace(os.Getenv("REDIS_URL")), RateLimitPrefix: strings.TrimSpace(os.Getenv("RATE_LIMIT_PREFIX")), RateLimitTimeout: time.Duration(envInt("RATE_LIMIT_TIMEOUT_MS", 200)) * time.Millisecond, RateLimitDevFallback: envBool("RATE_LIMIT_DEV_FALLBACK", false),
@@ -119,6 +122,12 @@ func Load() (Config, error) {
 	}
 	production := strings.EqualFold(os.Getenv("APP_ENV"), "production")
 	c.Production = production
+	if production && c.BranchProrationEnabled {
+		return Config{}, errors.New("branch proration is a local preview; production activation is not certified")
+	}
+	if c.BranchPaymentSimulator && (production || !c.BranchProrationEnabled || c.MercadoPagoProvider != "disabled" || c.MercadoPagoAccessToken != "" || (appURL.Hostname() != "localhost" && appURL.Hostname() != "127.0.0.1")) {
+		return Config{}, errors.New("branch simulator requires enabled local-only development with Mercado Pago disabled and no token")
+	}
 	if encodedKey := strings.TrimSpace(os.Getenv("OUTBOX_ENCRYPTION_KEY")); encodedKey != "" {
 		c.OutboxEncryptionKey, err = base64.StdEncoding.DecodeString(encodedKey)
 		if err != nil || len(c.OutboxEncryptionKey) != 32 {
