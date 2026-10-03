@@ -79,3 +79,35 @@ func TestCORSExposesETag(t *testing.T) {
 		t.Fatalf("exposed headers=%q", exposed)
 	}
 }
+
+func TestCORSAllowsCardEventStreamHeaders(t *testing.T) {
+	t.Setenv("CORS_ORIGINS", "https://testing.puntazo.pro")
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(CORS())
+	router.GET("/v1/clientes/me/tarjetas/events", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	for _, origin := range []string{"https://testing.puntazo.pro", "https://untrusted.example"} {
+		request := httptest.NewRequest(http.MethodOptions, "/v1/clientes/me/tarjetas/events", nil)
+		request.Header.Set("Origin", origin)
+		request.Header.Set("Access-Control-Request-Method", "GET")
+		request.Header.Set("Access-Control-Request-Headers", "authorization,cache-control,x-client-platform,last-event-id")
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		if origin != "https://testing.puntazo.pro" {
+			if response.Code != http.StatusForbidden {
+				t.Fatalf("untrusted origin status=%d", response.Code)
+			}
+			continue
+		}
+		if response.Code != http.StatusNoContent {
+			t.Fatalf("preflight status=%d", response.Code)
+		}
+		allowed := "," + strings.ToLower(response.Header().Get("Access-Control-Allow-Headers")) + ","
+		for _, header := range []string{"authorization", "cache-control", "x-client-platform", "last-event-id"} {
+			if !strings.Contains(allowed, ","+header+",") {
+				t.Fatalf("browser would reject stream: missing %s in %s", header, allowed)
+			}
+		}
+	}
+}
