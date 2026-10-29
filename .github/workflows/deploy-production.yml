@@ -3,6 +3,8 @@ name: Deploy backend to Puntazo production
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'scripts/stress-remediation/Dockerfile.monitor'
   workflow_dispatch:
     inputs:
       check_only:

@@ -45,6 +45,7 @@ func newRouter(h *handler.Handler, tokens *auth.Tokens, logger *slog.Logger) *gi
 	backofficeAuthorized.Use(h.RequireBackoffice)
 	backofficeAuthorized.GET("/me", h.BackofficeMe)
 	backofficeAuthorized.GET("/customers", h.BackofficeCustomers)
+	backofficeAuthorized.GET("/users", h.BackofficeRegisteredUsers)
 	backofficeAuthorized.GET("/prices", h.SubscriptionPrices)
 	backofficeAuthorized.GET("/prices/:program/preview", h.BackofficePricePreview)
 	backofficeAuthorized.PUT("/prices/:program", h.BackofficeChangePrice)

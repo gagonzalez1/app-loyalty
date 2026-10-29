@@ -8,6 +8,7 @@ on:
       - ".github/workflows/deploy-production.yml"
       - "ops/**"
       - ".github/workflows/deploy-testing.yml"
+      - "scripts/stress-remediation/Dockerfile.monitor"
       - "cmd/**"
       - "internal/**"
       - "migrations/**"
@@ -22,6 +23,7 @@ on:
       - ".github/workflows/deploy-production.yml"
       - "ops/**"
       - ".github/workflows/deploy-testing.yml"
+      - "scripts/stress-remediation/Dockerfile.monitor"
       - "cmd/**"
       - "internal/**"
       - "migrations/**"
@@ -62,6 +64,30 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Check readiness monitor image changes
+        id: monitor_changes
+        env:
+          MONITOR_DIFF_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [[ -z "$MONITOR_DIFF_BASE" || "$MONITOR_DIFF_BASE" =~ ^0+$ ]] ||
+            ! git diff --quiet "$MONITOR_DIFF_BASE" "$GITHUB_SHA" -- scripts/stress-remediation/Dockerfile.monitor; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify readiness monitor image
+        if: steps.monitor_changes.outputs.changed == 'true'
+        run: |
+          docker build --pull --file scripts/stress-remediation/Dockerfile.monitor --tag puntazo-readiness-monitor:ci .
+          docker run --rm --network none --memory 128m --cpus 0.5 --entrypoint node puntazo-readiness-monitor:ci --version | grep -x 'v22.23.4'
+          docker run --rm --network none --memory 128m --cpus 0.5 \
+            --volume "$PWD/scripts/stress-remediation:/monitor:ro" \
+            --entrypoint node puntazo-readiness-monitor:ci \
+            --test /monitor/guards.test.js /monitor/monitor-health.test.mjs
 
       - name: Set up Go
         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0

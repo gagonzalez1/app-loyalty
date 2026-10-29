@@ -1879,6 +1879,51 @@ paths:
       responses:
         '200': { description: 'ID, email y rol de la cuenta interna' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
+  /backoffice/users:
+    get:
+      tags: [Backoffice]
+      operationId: listBackofficeRegisteredUsers
+      summary: Consulta personas registradas (ADMIN_SISTEMA)
+      description: Cuentas de producto sin baja. Excluye staff, contraseñas, identificadores de proveedores y QR. Orden por ID descendente; búsqueda literal sin distinción de mayúsculas. Respuesta sin caché.
+      security: [{ backofficeCookie: [] }]
+      x-puntazo-implementation: IMPLEMENTED
+      parameters:
+        - { in: query, name: q, schema: { type: string, maxLength: 120 }, description: Nombre/apellido/email }
+        - { in: query, name: account_type, schema: { type: string, enum: [CLIENTE_FINAL, PERSONAL_MARCA] } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { in: query, name: before, schema: { type: integer, format: int64, minimum: 1 }, description: next_cursor de la página anterior }
+      responses:
+        '200':
+          description: Página de personas registradas
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  request_id: { type: string }
+                  data:
+                    type: object
+                    required: [items, next_cursor]
+                    properties:
+                      next_cursor: { type: [string, 'null'] }
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          required: [id, name, last_name, email, account_type, active, email_verified_at, created_at]
+                          properties:
+                            id: { type: integer, format: int64 }
+                            name: { type: string }
+                            last_name: { type: [string, 'null'] }
+                            email: { type: string, format: email }
+                            account_type: { type: string, enum: [CLIENTE_FINAL, PERSONAL_MARCA] }
+                            active: { type: boolean }
+                            email_verified_at: { type: [string, 'null'], format: date-time }
+                            created_at: { type: string, format: date-time }
+        '422': { description: Filtros o paginación inválidos }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { description: Requiere ADMIN_SISTEMA }
   /backoffice/logout:
     post:
       tags: [Backoffice]

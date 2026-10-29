@@ -40,6 +40,7 @@ func TestRouteInventoryAndAuthentication(t *testing.T) {
 		{"DELETE", "/v1/marcas/:brand_id/sucursales/:resource_id/menu/borrador", "/v1/marcas/1/sucursales/1/menu/borrador"},
 		{"GET", "/v1/backoffice/me", "/v1/backoffice/me"},
 		{"GET", "/v1/backoffice/customers", "/v1/backoffice/customers"},
+		{"GET", "/v1/backoffice/users", "/v1/backoffice/users"},
 		{"GET", "/v1/backoffice/prices", "/v1/backoffice/prices"},
 		{"GET", "/v1/backoffice/prices/:program/preview", "/v1/backoffice/prices/SELLOS/preview?unit_price_minor=2500000"},
 		{"PUT", "/v1/backoffice/prices/:program", "/v1/backoffice/prices/SELLOS"},
@@ -180,7 +181,7 @@ func TestBackofficeRejectsCustomerAndMerchantAppTokens(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, route := range []string{"/v1/backoffice/me", "/v1/backoffice/customers", "/v1/backoffice/campaigns", "/v1/backoffice/brands/1/credit-allocations"} {
+		for _, route := range []string{"/v1/backoffice/users", "/v1/backoffice/me", "/v1/backoffice/customers", "/v1/backoffice/campaigns", "/v1/backoffice/brands/1/credit-allocations"} {
 			request := httptest.NewRequest(http.MethodGet, route, nil)
 			request.Header.Set("Authorization", "Bearer "+token)
 			response := httptest.NewRecorder()
