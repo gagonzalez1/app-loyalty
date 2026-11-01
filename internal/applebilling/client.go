@@ -94,7 +94,16 @@ func New(cfg Config, client *http.Client) (*Client, error) {
 		}
 		data = rest
 		cert, e := x509.ParseCertificate(block.Bytes)
-		if e != nil || (!cert.IsCA && cfg.Environment != "Xcode") || cert.CheckSignatureFrom(cert) != nil {
+		if e != nil {
+			return nil, errors.New("invalid trusted root")
+		}
+		if cfg.Environment == "Xcode" {
+			// StoreKit's pinned local signing certificate can omit CertSign.
+			// Verify its self-signature without treating it as an issuing CA.
+			if !bytes.Equal(cert.RawSubject, cert.RawIssuer) || cert.CheckSignature(cert.SignatureAlgorithm, cert.RawTBSCertificate, cert.Signature) != nil {
+				return nil, errors.New("invalid trusted root")
+			}
+		} else if !cert.IsCA || cert.CheckSignatureFrom(cert) != nil {
 			return nil, errors.New("invalid trusted root")
 		}
 		c.roots.AddCert(cert)

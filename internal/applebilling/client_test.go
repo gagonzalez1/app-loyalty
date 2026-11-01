@@ -19,6 +19,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -32,6 +33,109 @@ type signedFixture struct {
 	key       *ecdsa.PrivateKey
 	chain     []string
 	now       time.Time
+}
+
+func TestXcodeSingleCertificateDigitalSignatureOnly(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	template := &x509.Certificate{SerialNumber: big.NewInt(123), Subject: pkix.Name{CommonName: "Xcode local"}, NotBefore: now.Add(-time.Hour), NotAfter: now.Add(time.Hour), BasicConstraintsValid: true, IsCA: true, MaxPathLen: 0, MaxPathLenZero: true, KeyUsage: x509.KeyUsageDigitalSignature}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	cfg := Config{Enabled: true, Environment: "Xcode", AllowXcode: true, BundleID: "com.puntazo.app", RootsPEM: roots}
+	client, err := New(cfg, nil)
+	if err != nil {
+		t.Fatal("local root rejected", err)
+	}
+	client.now = func() time.Time { return now }
+	f := signedFixture{client: client, key: key, chain: []string{base64.StdEncoding.EncodeToString(der)}, now: now}
+	signed := f.sign(t, f.transaction())
+	if _, err = client.VerifyTransaction(t.Context(), signed); err != nil {
+		t.Fatal("local signed transaction rejected", err)
+	}
+	expired := f.transaction()
+	expired.SignedDate = now.Add(2 * time.Hour).UnixMilli()
+	client.now = func() time.Time { return now.Add(2 * time.Hour) }
+	if _, err = client.VerifyTransaction(t.Context(), f.sign(t, expired)); err == nil {
+		t.Fatal("certificate expired at signing accepted")
+	}
+	client.now = func() time.Time { return now }
+	parts := strings.Split(signed, ".")
+	parts[2] = base64.RawURLEncoding.EncodeToString(make([]byte, 64))
+	if _, err = client.VerifyTransaction(t.Context(), strings.Join(parts, ".")); err == nil {
+		t.Fatal("tampered signature accepted")
+	}
+	badRoot := append([]byte(nil), der...)
+	badRoot[len(badRoot)-1] ^= 1
+	bad := cfg
+	bad.RootsPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: badRoot})
+	if _, err = New(bad, nil); err == nil {
+		t.Fatal("invalid self-signature accepted")
+	}
+	bad = cfg
+	bad.AllowXcode = false
+	if _, err = New(bad, nil); err == nil {
+		t.Fatal("Xcode without explicit opt-in accepted")
+	}
+	bad = cfg
+	bad.Production = true
+	if _, err = New(bad, nil); err == nil {
+		t.Fatal("production accepted Xcode")
+	}
+	bad = cfg
+	bad.Environment = "Production"
+	bad.AllowXcode = false
+	bad.Production = true
+	if _, err = New(bad, nil); err == nil || err.Error() != "invalid trusted root" {
+		t.Fatal("production accepted local digital-signature-only root")
+	}
+}
+
+// Optional private integration evidence remains on the local machine.
+func TestXcodePrivateEvidence(t *testing.T) {
+	rootPath, receiptPath := os.Getenv("PUNTAZO_XCODE_ROOT_PATH"), os.Getenv("PUNTAZO_XCODE_JWS_PATH")
+	if rootPath == "" || receiptPath == "" {
+		t.Skip("private Xcode evidence not supplied")
+	}
+	roots, err := os.ReadFile(rootPath)
+	if err != nil {
+		t.Fatal("cannot read local root")
+	}
+	signed, err := os.ReadFile(receiptPath)
+	if err != nil {
+		t.Fatal("cannot read local transaction")
+	}
+	client, err := New(Config{Enabled: true, Environment: "Xcode", AllowXcode: true, BundleID: "com.puntazo.app", RootsPEM: roots}, nil)
+	if err != nil {
+		t.Fatal("local root rejected", err)
+	}
+	if _, err = client.VerifyTransaction(t.Context(), strings.TrimSpace(string(signed))); err != nil {
+		t.Fatal("local signed transaction rejected", err)
+	}
+	parts := strings.Split(strings.TrimSpace(string(signed)), ".")
+	if len(parts) != 3 {
+		t.Fatal("invalid local evidence format")
+	}
+	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil || len(signature) == 0 {
+		t.Fatal("invalid local signature format")
+	}
+	signature[0] ^= 1
+	parts[2] = base64.RawURLEncoding.EncodeToString(signature)
+	if _, err = client.VerifyTransaction(t.Context(), strings.Join(parts, ".")); err == nil {
+		t.Fatal("tampered local transaction accepted")
+	}
+	if _, err = New(Config{Enabled: true, Environment: "Xcode", BundleID: "com.puntazo.app", RootsPEM: roots}, nil); err == nil {
+		t.Fatal("local root accepted without Xcode opt-in")
+	}
+	if _, err = New(Config{Enabled: true, Production: true, Environment: "Production", BundleID: "com.puntazo.app", RootsPEM: roots}, nil); err == nil || err.Error() != "invalid trusted root" {
+		t.Fatal("local root accepted for production")
+	}
 }
 
 func certificateFixture(t *testing.T) signedFixture {
