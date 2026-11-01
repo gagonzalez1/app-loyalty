@@ -4644,7 +4644,7 @@ components:
 
     ApplePurchaseIntent: {"type": "object", "additionalProperties": false, "properties": {"intent_id": {"type": "string", "format": "uuid"}, "app_account_token": {"type": "string", "format": "uuid"}, "product_id": {"type": "string"}, "expires_at": {"type": "string", "format": "date-time"}, "offer": {"type": "object", "additionalProperties": false, "properties": {"offer_id": {"type": "string"}, "code": {"type": "string"}}, "required": ["offer_id"]}}, "required": ["intent_id", "app_account_token", "product_id", "expires_at"]}
 
-    AppleSyncRequest: {"type": "object", "additionalProperties": false, "properties": {"signed_transaction": {"type": "string"}, "intent_id": {"type": "string", "format": "uuid"}}, "required": ["signed_transaction"]}
+    AppleSyncRequest: {"type": "object", "additionalProperties": false, "properties": {"signed_transaction": {"type": "string"}, "intent_id": {"type": "string", "format": "uuid"}, "restore": {"type": "boolean", "default": false, "description": "Sólo restauración deliberada del propietario; permite reconciliar una transacción existente sin intención local. No inicia compras ni sobrescribe cadenas ajenas."}}, "required": ["signed_transaction"]}
 
     AppleNotificationRequest: {"type": "object", "additionalProperties": false, "properties": {"signedPayload": {"type": "string"}}, "required": ["signedPayload"]}
 

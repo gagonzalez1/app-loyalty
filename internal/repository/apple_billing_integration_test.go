@@ -582,3 +582,174 @@ func TestPostgresAppleBillingRollbackProtectsDurableData(t *testing.T) {
 		}
 	})
 }
+
+type restoreAppleProvider struct {
+	t         model.AppleTransaction
+	submitted *model.AppleTransaction
+	sets      int
+	invalid   bool
+}
+
+func (*restoreAppleProvider) Enabled() bool          { return true }
+func (*restoreAppleProvider) PurchasesEnabled() bool { return false }
+func (*restoreAppleProvider) Environment() string    { return "Xcode" }
+func (p *restoreAppleProvider) VerifyTransaction(_ context.Context, signed string) (model.AppleTransaction, error) {
+	if p.invalid || signed != "verified" {
+		return model.AppleTransaction{}, errors.New("bad signature")
+	}
+	if p.submitted != nil {
+		return *p.submitted, nil
+	}
+	return p.t, nil
+}
+func (*restoreAppleProvider) VerifyNotification(context.Context, string) (model.AppleNotification, error) {
+	return model.AppleNotification{}, errors.New("not expected")
+}
+func (p *restoreAppleProvider) SubscriptionStatuses(_ context.Context, original string) ([]model.AppleSubscriptionStatus, error) {
+	if original != p.t.OriginalTransactionID {
+		return nil, errors.New("wrong original")
+	}
+	return []model.AppleSubscriptionStatus{{Transaction: p.t}}, nil
+}
+func (p *restoreAppleProvider) SetAppAccountToken(_ context.Context, _ string, token string) error {
+	p.sets++
+	p.t.AppAccountToken = token
+	return nil
+}
+
+func TestPostgresAppleExplicitRestore(t *testing.T) {
+	p, r, f := appleFixture(t)
+	expired := appleIntent(t, r, f, 1)
+	if _, e := p.Exec(t.Context(), `UPDATE apple_purchase_intents SET expires_at=now()-interval '1 minute' WHERE id=$1`, expired.IntentID); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := p.Exec(t.Context(), `UPDATE marcas SET created_at=now() WHERE id=$1`, f.brand); e != nil {
+		t.Fatal(e)
+	}
+	purchase := appleTransaction(f, model.ApplePurchaseIntent{ProductID: "com.puntazo.app.merchant.sellos.1.monthly"}, time.Now())
+	provider := &restoreAppleProvider{t: purchase}
+	svc := service.New(r, nil, config.Config{})
+	svc.AppleBilling = provider
+	req := model.AppleSyncRequest{SignedTransaction: "verified"}
+	if _, e := svc.SyncApplePurchase(t.Context(), f.owner, f.brand, req); !errors.Is(e, repository.ErrAppleIntentRequired) {
+		t.Fatal("automatic claim accepted", e)
+	}
+	req.IntentID = expired.IntentID
+	if _, e := svc.SyncApplePurchase(t.Context(), f.owner, f.brand, req); !errors.Is(e, repository.ErrAppleIntentRequired) {
+		t.Fatal("expired intent accepted", e)
+	}
+	req.Restore = true
+	if _, e := svc.SyncApplePurchase(t.Context(), f.customer, f.brand, req); !errors.Is(e, repository.ErrForbidden) {
+		t.Fatal("nonowner restore", e)
+	}
+	provider.invalid = true
+	if _, e := svc.SyncApplePurchase(t.Context(), f.owner, f.brand, req); !errors.Is(e, service.ErrAppleTransactionInvalid) {
+		t.Fatal("invalid signature", e)
+	}
+	provider.invalid = false
+	state, e := svc.SyncApplePurchase(t.Context(), f.owner, f.brand, req)
+	if e != nil || state.Mode != "APPLE" || provider.sets != 1 {
+		t.Fatal("restore with trial active and purchases stopped", state, provider.sets, e)
+	}
+	if _, e = svc.SyncApplePurchase(t.Context(), f.owner, f.brand, req); e != nil || provider.sets != 1 {
+		t.Fatal("restore replay", e)
+	}
+	other := accountDeletionFixture(t, p, "")
+	if _, e = svc.SyncApplePurchase(t.Context(), other.owner, other.brand, req); !errors.Is(e, repository.ErrAppleChainConflict) {
+		t.Fatal("chain stolen", e)
+	}
+}
+
+func TestPostgresAppleRestoreRejectsBeforeAssignment(t *testing.T) {
+	for _, which := range []string{"program", "capacity", "referral", "mp", "foreign-token", "reserved"} {
+		t.Run(which, func(t *testing.T) {
+			p, r, f := appleFixture(t)
+			purchase := appleTransaction(f, model.ApplePurchaseIntent{ProductID: "com.puntazo.app.merchant.sellos.1.monthly"}, time.Now())
+			var expected error
+			switch which {
+			case "program":
+				purchase.ProductID = "com.puntazo.app.merchant.puntos.1.monthly"
+				expected = repository.ErrAppleProductConflict
+			case "capacity":
+				if _, e := r.CreateBranch(t.Context(), f.owner, f.brand, model.CreateBranchRequest{Name: "Extra"}); e != nil {
+					t.Fatal(e)
+				}
+				expected = repository.ErrAppleCapacity
+			case "referral":
+				source := accountDeletionFixture(t, p, "")
+				_, e := p.Exec(t.Context(), `INSERT INTO referral_attributions(brand_id,code_id,campaign_id,source_kind,source_brand_id,discount_bps,discount_charges,reward_bps,reward_charges) SELECT $1,id,campaign_id,'MERCHANT',$2,5000,3,0,0 FROM referral_codes WHERE source_brand_id=$2`, f.brand, source.brand)
+				if e != nil {
+					t.Fatal(e)
+				}
+				expected = repository.ErrAppleOfferUnavailable
+			case "mp":
+				if _, _, e := r.ReserveSubscriptionCheckout(t.Context(), f.owner, f.brand, uuid.NewString(), 15000, 20000); e != nil {
+					t.Fatal(e)
+				}
+				expected = repository.ErrBillingProviderConflict
+			case "foreign-token":
+				purchase.AppAccountToken = uuid.NewString()
+				expected = repository.ErrAppleChainConflict
+			case "reserved":
+				other := accountDeletionFixture(t, p, "")
+				if _, e := r.AppleRestoreClaim(t.Context(), other.owner, other.brand, purchase); e != nil {
+					t.Fatal(e)
+				}
+				expected = repository.ErrAppleChainConflict
+			}
+			provider := &restoreAppleProvider{t: purchase}
+			svc := service.New(r, nil, config.Config{})
+			svc.AppleBilling = provider
+			_, e := svc.SyncApplePurchase(t.Context(), f.owner, f.brand, model.AppleSyncRequest{SignedTransaction: "verified", Restore: true})
+			if !errors.Is(e, expected) || provider.sets != 0 {
+				t.Fatal("assigned despite conflict", e, provider.sets)
+			}
+		})
+	}
+}
+
+func TestPostgresAppleRestoreCanonicalAndConcurrentClaims(t *testing.T) {
+	p, r, f := appleFixture(t)
+	other := accountDeletionFixture(t, p, "")
+	purchase := appleTransaction(f, model.ApplePurchaseIntent{ProductID: "com.puntazo.app.merchant.sellos.1.monthly"}, time.Now())
+	canonical := purchase
+	canonical.AppAccountToken = uuid.NewString()
+	provider := &restoreAppleProvider{t: canonical, submitted: &purchase}
+	svc := service.New(r, nil, config.Config{})
+	svc.AppleBilling = provider
+	_, e := svc.SyncApplePurchase(t.Context(), f.owner, f.brand, model.AppleSyncRequest{SignedTransaction: "verified", Restore: true})
+	if !errors.Is(e, repository.ErrAppleChainConflict) || provider.sets != 0 {
+		t.Fatal("canonical foreign token", e, provider.sets)
+	}
+	canonical = purchase
+	canonical.ProductID = "com.puntazo.app.merchant.puntos.1.monthly"
+	provider.t = canonical
+	_, e = svc.SyncApplePurchase(t.Context(), f.owner, f.brand, model.AppleSyncRequest{SignedTransaction: "verified", Restore: true})
+	if !errors.Is(e, repository.ErrAppleProductConflict) || provider.sets != 0 {
+		t.Fatal("canonical incompatible product", e, provider.sets)
+	}
+	results := make(chan error, 2)
+	start := make(chan struct{})
+	for _, v := range []deletionFixture{f, other} {
+		go func(v deletionFixture) {
+			<-start
+			_, err := r.AppleRestoreClaim(context.Background(), v.owner, v.brand, purchase)
+			results <- err
+		}(v)
+	}
+	close(start)
+	ok, conflict := 0, 0
+	for range 2 {
+		err := <-results
+		if err == nil {
+			ok++
+		} else if errors.Is(err, repository.ErrAppleChainConflict) {
+			conflict++
+		} else {
+			t.Fatal(err)
+		}
+	}
+	if ok != 1 || conflict != 1 {
+		t.Fatal("claim concurrency", ok, conflict)
+	}
+}

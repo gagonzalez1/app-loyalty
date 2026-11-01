@@ -49,6 +49,7 @@ type ApplePurchaseIntent struct {
 type AppleSyncRequest struct {
 	SignedTransaction string `json:"signed_transaction"`
 	IntentID          string `json:"intent_id,omitempty"`
+	Restore           bool   `json:"restore,omitempty"`
 }
 
 // Apple amounts are signed StoreKit milliunits, never MP's ARS minor units.

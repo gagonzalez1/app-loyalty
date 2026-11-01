@@ -199,6 +199,12 @@ func lockAppleOwner(ctx context.Context, tx pgx.Tx, actor, brand int64) error {
 	}
 	return e
 }
+
+// Serialize first binding and reservation across different brand locks.
+func lockAppleChain(ctx context.Context, tx pgx.Tx, t model.AppleTransaction) error {
+	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, t.Environment+":"+t.OriginalTransactionID)
+	return err
+}
 func (r *Repository) CreateApplePurchaseIntent(ctx context.Context, actor, brand int64, key string, req model.ApplePurchaseIntentRequest, environment string) (model.ApplePurchaseIntent, error) {
 	var out model.ApplePurchaseIntent
 	if environment != r.appleEnvironment() {
@@ -331,6 +337,9 @@ func (r *Repository) AppleClaim(ctx context.Context, actor, brand int64, t model
 	if e = lockAppleOwner(ctx, tx, actor, brand); e != nil {
 		return "", e
 	}
+	if e = lockAppleChain(ctx, tx, t); e != nil {
+		return "", e
+	}
 	var token string
 	e = tx.QueryRow(ctx, `SELECT app_account_token::text FROM apple_billing_accounts WHERE marca_id=$1`, brand).Scan(&token)
 	if errors.Is(e, pgx.ErrNoRows) {
@@ -359,6 +368,9 @@ func (r *Repository) AppleClaim(ctx context.Context, actor, brand int64, t model
 		}
 		return token, tx.Commit(ctx)
 	}
+	if _, e = uuid.Parse(intent); e != nil {
+		return "", ErrAppleIntentRequired
+	}
 	var product string
 	var offer *string
 	e = tx.QueryRow(ctx, `SELECT product_id,offer_id FROM apple_purchase_intents WHERE id=$1 AND marca_id=$2 AND actor_id=$3 AND expires_at>$4`, intent, brand, actor, r.Now()).Scan(&product, &offer)
@@ -385,6 +397,97 @@ func (r *Repository) AppleClaim(ctx context.Context, actor, brand int64, t model
 	return token, tx.Commit(ctx)
 }
 
+// AppleRestoreClaim reserves a previously unbound tokenless chain for an
+// explicit owner-initiated restore. Possession of a signed transaction is not
+// proof of the identity of the Apple account holder.
+func (r *Repository) AppleRestoreClaim(ctx context.Context, actor, brand int64, t model.AppleTransaction) (string, error) {
+	if t.Environment != r.appleEnvironment() {
+		return "", ErrAppleEnvironmentConflict
+	}
+	p, ok := applebilling.Product(t.ProductID)
+	if !ok {
+		return "", ErrInvalidRequest
+	}
+	tx, e := r.Pool.Begin(ctx)
+	if e != nil {
+		return "", e
+	}
+	defer tx.Rollback(ctx)
+	if e = lockAppleOwner(ctx, tx, actor, brand); e != nil {
+		return "", e
+	}
+	if e = lockAppleChain(ctx, tx, t); e != nil {
+		return "", e
+	}
+	var bound int64
+	e = tx.QueryRow(ctx, `SELECT marca_id FROM apple_subscription_chains WHERE environment=$1 AND original_transaction_id=$2`, t.Environment, t.OriginalTransactionID).Scan(&bound)
+	if e != nil && !errors.Is(e, pgx.ErrNoRows) {
+		return "", e
+	}
+	if e == nil && bound != brand {
+		return "", ErrAppleChainConflict
+	}
+	alreadyBound := e == nil
+	var token string
+	e = tx.QueryRow(ctx, `SELECT app_account_token::text FROM apple_billing_accounts WHERE marca_id=$1`, brand).Scan(&token)
+	if e != nil && !errors.Is(e, pgx.ErrNoRows) {
+		return "", e
+	}
+	if t.AppAccountToken != "" && (token == "" || t.AppAccountToken != token) {
+		return "", ErrAppleChainConflict
+	}
+	if alreadyBound {
+		if token == "" {
+			return "", ErrAppleChainConflict
+		}
+		return token, tx.Commit(ctx)
+	}
+	// New chains must be compatible before a remote assignment can occur.
+	snapshot, e := appleSnapshot(ctx, tx, brand, r.Now(), r.appleEnvironment())
+	if e != nil {
+		return "", e
+	}
+	var mp bool
+	if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM suscripciones_marca WHERE marca_id=$1 AND estado<>'CANCELLED')`, brand).Scan(&mp); e != nil {
+		return "", e
+	}
+	if mp {
+		return "", ErrBillingProviderConflict
+	}
+	if p.ProgramType != snapshot.BrandProgram {
+		return "", ErrAppleProductConflict
+	}
+	if p.Capacity < snapshot.State.ActiveBranches {
+		return "", ErrAppleCapacity
+	}
+	if e = requireAppleReferralOffer(ctx, tx, brand, t); e != nil {
+		return "", e
+	}
+	if token == "" {
+		// Never synthesize an account matching a token already assigned by Apple.
+		if t.AppAccountToken != "" {
+			return "", ErrAppleChainConflict
+		}
+		token = uuid.NewString()
+		if _, e = tx.Exec(ctx, `INSERT INTO apple_billing_accounts(marca_id,app_account_token) VALUES($1,$2)`, brand, token); e != nil {
+			return "", e
+		}
+	}
+	_, e = tx.Exec(ctx, `INSERT INTO apple_claim_reservations(environment,original_transaction_id,marca_id,app_account_token) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING`, t.Environment, t.OriginalTransactionID, brand, token)
+	if e != nil {
+		return "", e
+	}
+	var reserved int64
+	var reservedToken string
+	if e = tx.QueryRow(ctx, `SELECT marca_id,app_account_token::text FROM apple_claim_reservations WHERE environment=$1 AND original_transaction_id=$2 FOR UPDATE`, t.Environment, t.OriginalTransactionID).Scan(&reserved, &reservedToken); e != nil {
+		return "", e
+	}
+	if reserved != brand || reservedToken != token {
+		return "", ErrAppleChainConflict
+	}
+	return token, tx.Commit(ctx)
+}
+
 func (r *Repository) SaveAppleTransaction(ctx context.Context, actor, brand int64, t model.AppleTransaction, renewal *model.AppleRenewal) error {
 	if t.Environment != r.appleEnvironment() {
 		return ErrAppleEnvironmentConflict
@@ -405,6 +508,9 @@ func (r *Repository) SaveAppleTransaction(ctx context.Context, actor, brand int6
 		e = tx.QueryRow(ctx, `SELECT id FROM marcas WHERE id=$1 FOR UPDATE`, brand).Scan(&id)
 	}
 	if e != nil {
+		return e
+	}
+	if e = lockAppleChain(ctx, tx, t); e != nil {
 		return e
 	}
 	var token string

@@ -53,11 +53,46 @@ func (s *Service) SyncApplePurchase(ctx context.Context, actor, brand int64, req
 		}
 		return model.BrandBillingState{}, ErrAppleTransactionInvalid
 	}
-	token, e := s.Repo.AppleClaim(ctx, actor, brand, t, req.IntentID)
+	// Explicit restore of a tokenless receipt starts with Apple's current state,
+	// not a potentially old signed transaction supplied by the device.
+	var statuses []model.AppleSubscriptionStatus
+	if req.Restore && t.AppAccountToken == "" {
+		if _, e = s.Repo.BillingContext(ctx, actor, brand); e != nil {
+			return model.BrandBillingState{}, e
+		}
+		statuses, e = s.AppleBilling.SubscriptionStatuses(ctx, t.OriginalTransactionID)
+		if e != nil || len(statuses) == 0 {
+			return model.BrandBillingState{}, ErrBillingProviderFailure
+		}
+		original := t.OriginalTransactionID
+		for i, v := range statuses {
+			if v.Transaction.OriginalTransactionID != original {
+				return model.BrandBillingState{}, ErrBillingProviderFailure
+			}
+			if i == 0 || v.Transaction.SignedDate > t.SignedDate {
+				t = v.Transaction
+			}
+		}
+		for _, v := range statuses {
+			if v.Transaction.AppAccountToken != "" && v.Transaction.AppAccountToken != t.AppAccountToken {
+				return model.BrandBillingState{}, repository.ErrAppleChainConflict
+			}
+		}
+	}
+	var token string
+	if req.Restore {
+		token, e = s.Repo.AppleRestoreClaim(ctx, actor, brand, t)
+	} else {
+		token, e = s.Repo.AppleClaim(ctx, actor, brand, t, req.IntentID)
+	}
 	if e != nil {
 		return model.BrandBillingState{}, e
 	}
-	var statuses []model.AppleSubscriptionStatus
+	for _, v := range statuses {
+		if v.Transaction.AppAccountToken != "" && v.Transaction.AppAccountToken != token {
+			return model.BrandBillingState{}, repository.ErrAppleChainConflict
+		}
+	}
 	if t.AppAccountToken == "" {
 		// A code redemption is claimed durably before assignment; never replace an existing token.
 		statuses, e = s.AppleBilling.SubscriptionStatuses(ctx, t.OriginalTransactionID)
@@ -78,6 +113,12 @@ func (s *Service) SyncApplePurchase(ctx context.Context, actor, brand int64, req
 		}
 		matched := false
 		for _, v := range statuses {
+			if v.Transaction.OriginalTransactionID != t.OriginalTransactionID {
+				return model.BrandBillingState{}, ErrBillingProviderFailure
+			}
+			if v.Transaction.AppAccountToken != "" && v.Transaction.AppAccountToken != token {
+				return model.BrandBillingState{}, repository.ErrAppleChainConflict
+			}
 			if v.Transaction.AppAccountToken == token {
 				t = v.Transaction
 				matched = true
