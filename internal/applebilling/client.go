@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"clientesFrecuentes/internal/model"
@@ -40,12 +41,20 @@ type Config struct {
 	AllowXcode, Production               bool
 }
 type Client struct {
-	cfg   Config
-	roots *x509.CertPool
-	key   *ecdsa.PrivateKey
-	http  *http.Client
-	now   func() time.Time
-	base  string
+	cfg         Config
+	roots       *x509.CertPool
+	key         *ecdsa.PrivateKey
+	http        *http.Client
+	now         func() time.Time
+	base        string
+	ocspMu      sync.Mutex
+	ocspCache   map[string]time.Time
+	ocspFlights map[string]*ocspFlight
+}
+type ocspFlight struct {
+	done    chan struct{}
+	err     error
+	expires time.Time
 }
 
 func New(cfg Config, client *http.Client) (*Client, error) {
@@ -208,6 +217,12 @@ func (c *Client) verify(ctx context.Context, signed string, out any) error {
 		}
 	}
 
+	// Reject forged JWS before making any revocation-network requests. The
+	// public x5c chain alone is not evidence that the sender owns its leaf key.
+	parsed, e := jwt.Parse(signed, func(token *jwt.Token) (any, error) { return certificates[0].PublicKey, nil }, jwt.WithValidMethods([]string{"ES256"}), jwt.WithoutClaimsValidation())
+	if e != nil || !parsed.Valid {
+		return ErrInvalidSignedData
+	}
 	if c.cfg.Environment != "Xcode" {
 		if !hasExtension(certificates[0], asn1.ObjectIdentifier{1, 2, 840, 113635, 100, 6, 11, 1}) || !hasExtension(certificates[1], asn1.ObjectIdentifier{1, 2, 840, 113635, 100, 6, 2, 1}) {
 			return ErrInvalidSignedData
@@ -218,10 +233,6 @@ func (c *Client) verify(ctx context.Context, signed string, out any) error {
 		if e = c.checkOCSP(ctx, certificates[1], certificates[2]); e != nil {
 			return e
 		}
-	}
-	parsed, e := jwt.Parse(signed, func(token *jwt.Token) (any, error) { return certificates[0].PublicKey, nil }, jwt.WithValidMethods([]string{"ES256"}), jwt.WithoutClaimsValidation())
-	if e != nil || !parsed.Valid {
-		return ErrInvalidSignedData
 	}
 	if json.Unmarshal(payload, out) != nil {
 		return ErrInvalidSignedData
@@ -236,36 +247,92 @@ func hasExtension(cert *x509.Certificate, id asn1.ObjectIdentifier) bool {
 	}
 	return false
 }
+
+// checkOCSP coalesces concurrent requests for one certificate/issuer and caches
+// only validated Good responses. No stale-while-revalidate or negative cache:
+// expiry/provider failure fails closed, and cancellation reaches the leader's HTTP request.
 func (c *Client) checkOCSP(ctx context.Context, cert, issuer *x509.Certificate) error {
+	digest := sha256.New()
+	_, _ = digest.Write(cert.Raw)
+	_, _ = digest.Write(issuer.Raw)
+	key := string(digest.Sum(nil))
+	c.ocspMu.Lock()
+	if expiry, ok := c.ocspCache[key]; ok && c.now().Before(expiry) {
+		c.ocspMu.Unlock()
+		return nil
+	}
+	if flight, ok := c.ocspFlights[key]; ok {
+		c.ocspMu.Unlock()
+		select {
+		case <-ctx.Done():
+			return ErrUnavailable
+		case <-flight.done:
+			if flight.err == nil && !c.now().Before(flight.expires) {
+				return ErrInvalidSignedData
+			}
+			return flight.err
+		}
+	}
+	if c.ocspFlights == nil {
+		c.ocspFlights = map[string]*ocspFlight{}
+	}
+	flight := &ocspFlight{done: make(chan struct{})}
+	c.ocspFlights[key] = flight
+	c.ocspMu.Unlock()
+	expiry, err := c.fetchOCSP(ctx, cert, issuer)
+	c.ocspMu.Lock()
+	if err == nil && !c.now().Before(expiry) {
+		err = ErrInvalidSignedData
+	}
+	if err == nil {
+		// Refresh at least every five minutes even when the responder advertises
+		// a longer lifetime; never keep a response beyond its signed NextUpdate.
+		maxExpiry := c.now().Add(5 * time.Minute)
+		if expiry.After(maxExpiry) {
+			expiry = maxExpiry
+		}
+		if c.ocspCache == nil {
+			c.ocspCache = map[string]time.Time{}
+		}
+		c.ocspCache[key] = expiry
+		flight.expires = expiry
+	}
+	flight.err = err
+	delete(c.ocspFlights, key)
+	close(flight.done)
+	c.ocspMu.Unlock()
+	return err
+}
+func (c *Client) fetchOCSP(ctx context.Context, cert, issuer *x509.Certificate) (time.Time, error) {
 	if len(cert.OCSPServer) == 0 {
-		return ErrInvalidSignedData
+		return time.Time{}, ErrInvalidSignedData
 	}
 	body, e := ocsp.CreateRequest(cert, issuer, nil)
 	if e != nil {
-		return ErrInvalidSignedData
+		return time.Time{}, ErrInvalidSignedData
 	}
 	req, e := http.NewRequestWithContext(ctx, http.MethodPost, cert.OCSPServer[0], bytes.NewReader(body))
 	if e != nil {
-		return ErrInvalidSignedData
+		return time.Time{}, ErrInvalidSignedData
 	}
 	req.Header.Set("Content-Type", "application/ocsp-request")
 	resp, e := c.http.Do(req)
 	if e != nil {
-		return ErrUnavailable
+		return time.Time{}, ErrUnavailable
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return ErrUnavailable
+		return time.Time{}, ErrUnavailable
 	}
 	data, e := io.ReadAll(io.LimitReader(resp.Body, 128*1024))
 	if e != nil {
-		return ErrUnavailable
+		return time.Time{}, ErrUnavailable
 	}
 	status, e := ocsp.ParseResponseForCert(data, cert, issuer)
-	if e != nil || status.Status != ocsp.Good || status.ThisUpdate.After(c.now().Add(5*time.Minute)) || status.NextUpdate.IsZero() || status.NextUpdate.Before(c.now()) {
-		return ErrInvalidSignedData
+	if e != nil || status.Status != ocsp.Good || status.ThisUpdate.IsZero() || status.ThisUpdate.After(c.now().Add(5*time.Minute)) || status.NextUpdate.IsZero() || status.NextUpdate.Before(c.now()) {
+		return time.Time{}, ErrInvalidSignedData
 	}
-	return nil
+	return status.NextUpdate, nil
 }
 func (c *Client) VerifyTransaction(ctx context.Context, signed string) (model.AppleTransaction, error) {
 	return c.verifyTransaction(ctx, signed, true)
