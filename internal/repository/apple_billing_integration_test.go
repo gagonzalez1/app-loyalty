@@ -575,7 +575,9 @@ func TestPostgresAppleBillingRollbackProtectsDurableData(t *testing.T) {
 			t.Fatal("empty rollback", e)
 		}
 		var removed bool
-		if e := pool.QueryRow(t.Context(), `SELECT to_regclass('apple_billing_accounts') IS NULL AND to_regclass('apple_claim_reservations') IS NULL AND to_regclass('apple_transactions') IS NULL`).Scan(&removed); e != nil || !removed {
+		// CI also migrates public. Unqualified names would fall through search_path
+		// to those untouched tables after this fixture's own tables are dropped.
+		if e := pool.QueryRow(t.Context(), `SELECT to_regclass(format('%I.apple_billing_accounts', current_schema())) IS NULL AND to_regclass(format('%I.apple_claim_reservations', current_schema())) IS NULL AND to_regclass(format('%I.apple_transactions', current_schema())) IS NULL`).Scan(&removed); e != nil || !removed {
 			t.Fatal("empty tables not removed", removed, e)
 		}
 	})
