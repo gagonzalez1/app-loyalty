@@ -82,10 +82,11 @@ func appleSnapshot(ctx context.Context, q billingQuerier, brand int64, now time.
 	var capacity int
 	var expiry time.Time
 	var revoked *time.Time
+	var upgraded bool
 	var auto *bool
 	var pending *string
 	var appleGrace *time.Time
-	e = q.QueryRow(ctx, `SELECT t.product_id,t.program_type,t.capacity,t.expires_at,t.revoked_at,t.signed_at,r.auto_renew,r.pending_product_id,r.apple_grace_ends_at FROM apple_billing_accounts a JOIN apple_subscription_chains c ON c.marca_id=a.marca_id AND c.environment=a.active_environment JOIN apple_transactions t ON t.environment=c.environment AND t.original_transaction_id=c.original_transaction_id LEFT JOIN apple_renewal_state r ON r.environment=c.environment AND r.original_transaction_id=c.original_transaction_id WHERE a.marca_id=$1 AND NOT t.upgraded ORDER BY t.purchase_at DESC,t.expires_at DESC,t.signed_at DESC LIMIT 1`, brand).Scan(&product, &program, &capacity, &expiry, &revoked, &out.SignedAt, &auto, &pending, &appleGrace)
+	e = q.QueryRow(ctx, `SELECT t.product_id,t.program_type,t.capacity,t.expires_at,t.revoked_at,t.upgraded,t.signed_at,r.auto_renew,r.pending_product_id,r.apple_grace_ends_at FROM apple_billing_accounts a JOIN apple_subscription_chains c ON c.marca_id=a.marca_id AND c.environment=a.active_environment JOIN apple_transactions t ON t.environment=c.environment AND t.original_transaction_id=c.original_transaction_id LEFT JOIN apple_renewal_state r ON r.environment=c.environment AND r.original_transaction_id=c.original_transaction_id WHERE a.marca_id=$1 ORDER BY t.purchase_at DESC,t.expires_at DESC,t.signed_at DESC LIMIT 1`, brand).Scan(&product, &program, &capacity, &expiry, &revoked, &upgraded, &out.SignedAt, &auto, &pending, &appleGrace)
 	if errors.Is(e, pgx.ErrNoRows) {
 		out.State.Status = "NOT_SUBSCRIBED"
 		out.State.Restriction = "EXPIRED"
@@ -93,6 +94,14 @@ func appleSnapshot(ctx context.Context, q billingQuerier, brand int64, now time.
 	}
 	if e != nil {
 		return out, e
+	}
+	// An upgraded latest transaction means its replacement has not yet been
+	// recorded. Never fall back to older, potentially stale entitlements.
+	// Revocation must take precedence over this temporary missing state.
+	if upgraded && revoked == nil {
+		out.State.Status = "NOT_SUBSCRIBED"
+		out.State.Restriction = "EXPIRED"
+		return out, nil
 	}
 	out.State = DeriveAppleState(out.State, product, program, out.BrandProgram, capacity, expiry, appleGrace, revoked, auto, pending, now)
 	out.Revoked = revoked != nil
@@ -165,11 +174,14 @@ func appleWriteAllowed(state model.BrandBillingState, additional int) error {
 	if state.Restriction == "PROGRAM_CONFLICT" {
 		return ErrAppleProductConflict
 	}
-	if state.Restriction == "OVER_CAPACITY" || state.ActiveBranches+additional > state.Capacity {
+	if state.Restriction == "OVER_CAPACITY" {
 		return ErrAppleCapacity
 	}
 	if state.Restriction != "" {
 		return ErrAppleReadOnly
+	}
+	if state.ActiveBranches+additional > state.Capacity {
+		return ErrAppleCapacity
 	}
 	return nil
 }

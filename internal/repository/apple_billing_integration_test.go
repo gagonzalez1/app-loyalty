@@ -753,3 +753,66 @@ func TestPostgresAppleRestoreCanonicalAndConcurrentClaims(t *testing.T) {
 		t.Fatal("claim concurrency", ok, conflict)
 	}
 }
+
+func TestPostgresAppleLatestUpgradedNeverFallsBackToOlderPurchase(t *testing.T) {
+	p, r, f := appleFixture(t)
+	intent := appleIntent(t, r, f, 1)
+	now := time.Now().UTC()
+	old := appleTransaction(f, intent, now)
+	if e := r.SaveAppleTransaction(t.Context(), f.owner, f.brand, old, nil); e != nil {
+		t.Fatal(e)
+	}
+	latest := old
+	latest.TransactionID = uuid.NewString()
+	latest.ProductID = "com.puntazo.app.merchant.sellos.2.monthly"
+	latest.PurchaseDate = now.Add(time.Minute).UnixMilli()
+	latest.ExpiresDate = now.AddDate(0, 2, 0).UnixMilli()
+	latest.SignedDate = now.Add(time.Minute).UnixMilli()
+	latest.IsUpgraded = true
+	if e := r.SaveAppleTransaction(t.Context(), f.owner, f.brand, latest, nil); e != nil {
+		t.Fatal(e)
+	}
+	state, e := r.BrandBillingState(t.Context(), f.owner, f.brand)
+	if e != nil || state.Status != "NOT_SUBSCRIBED" || state.Restriction != "EXPIRED" || state.Capacity != 0 || state.ProductID == old.ProductID {
+		t.Fatal("upgraded latest fell back to old purchase", state, e)
+	}
+	if e = r.CheckAppleBillingWrite(t.Context(), f.owner, f.brand); !errors.Is(e, repository.ErrAppleReadOnly) {
+		t.Fatal("missing replacement allowed writes", e)
+	}
+	refunded := latest
+	refunded.SignedDate += 1000
+	refunded.RevocationDate = refunded.SignedDate
+	if e = r.SaveAppleTransaction(t.Context(), f.owner, f.brand, refunded, nil); e != nil {
+		t.Fatal(e)
+	}
+	if e = r.SaveAppleTransaction(t.Context(), f.owner, f.brand, latest, nil); e != nil {
+		t.Fatal("late stale event", e)
+	}
+	state, e = r.BrandBillingState(t.Context(), f.owner, f.brand)
+	if e != nil || state.Status != "REVOKED" || state.Restriction != "REVOKED" || state.ProductID != latest.ProductID || state.Capacity != 2 {
+		t.Fatal("refund lost precedence or selected old purchase", state, e)
+	}
+	if e = r.CheckAppleBillingWrite(t.Context(), f.owner, f.brand); !errors.Is(e, repository.ErrAppleReadOnly) {
+		t.Fatal("refund allowed grace writes", e)
+	}
+	replacement := latest
+	replacement.TransactionID = uuid.NewString()
+	replacement.ProductID = "com.puntazo.app.merchant.sellos.3.monthly"
+	replacement.PurchaseDate = now.Add(2 * time.Minute).UnixMilli()
+	replacement.SignedDate = now.Add(2 * time.Minute).UnixMilli()
+	replacement.IsUpgraded = false
+	if e = r.SaveAppleTransaction(t.Context(), f.owner, f.brand, replacement, nil); e != nil {
+		t.Fatal(e)
+	}
+	state, e = r.BrandBillingState(t.Context(), f.owner, f.brand)
+	if e != nil || state.Status != "ACTIVE" || state.Capacity != 3 || state.ProductID != replacement.ProductID {
+		t.Fatal("replacement did not recover rights", state, e)
+	}
+	if e = r.CheckAppleBillingWrite(t.Context(), f.owner, f.brand); e != nil {
+		t.Fatal("replacement denied writes", e)
+	}
+	var count int
+	if e = p.QueryRow(t.Context(), `SELECT count(*) FROM apple_transactions WHERE environment=$1 AND original_transaction_id=$2`, old.Environment, old.OriginalTransactionID).Scan(&count); e != nil || count != 3 {
+		t.Fatal("history changed", count, e)
+	}
+}

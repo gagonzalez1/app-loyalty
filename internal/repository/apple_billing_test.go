@@ -32,6 +32,10 @@ func TestAppleEntitlementTransitions(t *testing.T) {
 	if r.Status != "REVOKED" || appleWriteAllowed(r, 0) != ErrAppleReadOnly {
 		t.Fatal("refund got grace")
 	}
+	r.ActiveBranches = 3
+	if appleWriteAllowed(r, 0) != ErrAppleReadOnly {
+		t.Fatal("capacity masked revoked status")
+	}
 	conflict := DeriveAppleState(s, "sku", "PUNTOS", "SELLOS", 2, expiry, nil, nil, nil, nil, now)
 	if conflict.Status != "PROGRAM_CONFLICT" || appleWriteAllowed(conflict, 0) != ErrAppleProductConflict {
 		t.Fatal("external program mismatch")
