@@ -30,6 +30,9 @@ func (r *Repository) CreatePreview(ctx context.Context, actorID int64, req model
 	if err != nil {
 		return model.Preview{}, err
 	}
+	if err = RequireAppleWrite(ctx, tx, brandID, 0, r.Now(), r.appleEnvironment()); err != nil {
+		return model.Preview{}, err
+	}
 	var customerID int64
 	var customerName, customerCode, customerEmail string
 	err = tx.QueryRow(ctx, `SELECT id,btrim(concat_ws(' ',nombre,apellido)),email::text,COALESCE(codigo_usuario,'#USER-'||lpad(id::text,greatest(4,length(id::text)),'0')) FROM usuarios WHERE qr_hash=$1 AND tipo_cuenta='CLIENTE_FINAL' AND activo AND deleted_at IS NULL`, qrHash).Scan(&customerID, &customerName, &customerEmail, &customerCode)
@@ -154,6 +157,9 @@ func (r *Repository) ConfirmMovement(ctx context.Context, in ConfirmInput, build
 	}
 	if !r.Now().UTC().Before(p.Expires) {
 		return IdempotentResult{}, ErrPreviewExpired
+	}
+	if err = RequireAppleWrite(ctx, tx, p.BrandID, 0, r.Now(), r.appleEnvironment()); err != nil {
+		return IdempotentResult{}, err
 	}
 	var branchName, brandName, programType string
 	var programID int64

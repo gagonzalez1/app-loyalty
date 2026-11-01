@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"clientesFrecuentes/internal/applebilling"
+	"clientesFrecuentes/internal/appleidentity"
 	"clientesFrecuentes/internal/auth"
 	"clientesFrecuentes/internal/cardevents"
 	"clientesFrecuentes/internal/challenge"
@@ -63,6 +65,7 @@ func main() {
 	}
 	defer pool.Close()
 	repo := repository.New(pool, cfg.OutboxEncryptionKey)
+	repo.AppleBillingEnvironment = cfg.AppleBillingEnvironment
 	workerCtx, stopWorker := context.WithCancel(context.Background())
 	defer stopWorker()
 	if retainedLogs != nil {
@@ -106,6 +109,22 @@ func main() {
 	go (push.WebWorker{Repo: repo, Logger: logger, Subject: cfg.PublicAppURL}).Run(workerCtx)
 	go (maintenance.Worker{Repo: repo, Store: mediaStore, Logger: logger, Config: cfg}).Run(workerCtx)
 	svc := service.New(repo, tokens, cfg, mediaStore)
+	identity, err := appleidentity.New(appleidentity.Config{ClientID: cfg.AppleIdentityClientID, TeamID: cfg.AppleIdentityTeamID, KeyID: cfg.AppleIdentityKeyID, PrivateKeyPEM: string(cfg.AppleIdentityPrivateKeyPEM), RedirectURI: cfg.AppleIdentityRedirectURI})
+	if err != nil {
+		logger.Error("invalid Apple identity configuration")
+		os.Exit(1)
+	}
+	if identity != nil {
+		svc.AppleIdentity = identity
+	}
+	appleBilling, err := applebilling.New(applebilling.Config{Enabled: cfg.AppleBillingEnabled, PurchasesEnabled: cfg.AppleIAPPurchasesEnabled, SubscriptionGroupID: cfg.AppleBillingSubscriptionGroupID, Environment: cfg.AppleBillingEnvironment, BundleID: "com.puntazo.app", AppAppleID: cfg.AppleBillingAppAppleID, IssuerID: cfg.AppleBillingIssuerID, KeyID: cfg.AppleBillingKeyID, PrivateKeyPEM: cfg.AppleBillingPrivateKeyPEM, RootsPEM: cfg.AppleBillingRootsPEM, AllowXcode: cfg.AppleBillingAllowXcode, Production: cfg.Production}, &http.Client{Timeout: 10 * time.Second})
+	if err != nil {
+		logger.Error("invalid Apple billing configuration")
+		os.Exit(1)
+	}
+	svc.AppleBilling = appleBilling
+	go svc.RunAppleRevocations(workerCtx)
+	go svc.RunAppleBilling(workerCtx, logger)
 	svc.Challenge = &challenge.Manager{Enabled: cfg.CaptchaEnabled, SiteKey: cfg.CaptchaSiteKey, Secret: cfg.CaptchaSecret, Hostnames: cfg.CaptchaHostnames, Store: limiter}
 	if cfg.MercadoPagoProvider == "api" {
 		svc.Billing = mercadopago.New(cfg.MercadoPagoAPIURL, cfg.MercadoPagoAccessToken, cfg.MercadoPagoTimeout)

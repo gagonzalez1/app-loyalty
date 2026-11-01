@@ -163,7 +163,7 @@ func TestPostgresCodeAttemptsRotationAndLegacyCompatibility(t *testing.T) {
 	if _, err = svc.ConfirmEmailVerificationCode(ctx, model.VerificationCodeConfirmRequest{Email: other.User.Email, Code: otherCode}); !errors.Is(err, service.ErrIdentityToken) {
 		t.Fatal("legacy rotation left code valid")
 	}
-	if err = repo.CheckSchema(ctx, "0043"); err != nil {
+	if err = repo.CheckSchema(ctx, "0045"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -318,13 +318,13 @@ func TestPostgresCodeMigrationUpgradeAndReadiness(t *testing.T) {
 		t.Fatalf("rollback cancellation=%v err=%v", cancelled, err)
 	}
 	apply("up")
-	if err := repo.CheckSchema(ctx, "0043"); err != nil {
+	if err := repo.CheckSchema(ctx, "0045"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `DELETE FROM schema_migrations WHERE version='0008'`); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.CheckSchema(ctx, "0043"); err == nil {
+	if err := repo.CheckSchema(ctx, "0045"); err == nil {
 		t.Fatal("accepted missing migration despite latest version matching")
 	}
 }
@@ -354,6 +354,7 @@ func TestPostgresLegacyMerchantIdempotencyFingerprintUnchanged(t *testing.T) {
 
 // Older migration upgrade fixtures start from the current source schema.
 func rollbackCodeMigrationFixture(t *testing.T, p *pgxpool.Pool) {
+	rollbackAppleMigrationFixture(t, p)
 	t.Helper()
 	body, err := os.ReadFile("../../migrations/0043_email_verification_codes.down.sql")
 	if err != nil {

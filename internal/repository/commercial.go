@@ -130,6 +130,9 @@ func (r *Repository) CreateBranch(ctx context.Context, actorID, brandID int64, r
 	if err = requireNoActiveSubscription(ctx, tx, brandID); err != nil {
 		return model.Branch{}, err
 	}
+	if err = RequireAppleWrite(ctx, tx, brandID, 1, r.Now(), r.appleEnvironment()); err != nil {
+		return model.Branch{}, err
+	}
 	var b model.Branch
 	err = scanBranch(tx.QueryRow(ctx, `INSERT INTO sucursales(marca_id,nombre,direccion,localidad,provincia,codigo_postal,latitud,longitud) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,marca_id,nombre,direccion,activo,localidad,provincia,codigo_postal,latitud,longitud,principal,version,created_at,updated_at`, brandID, req.Name, req.Address, req.Locality, req.Province, req.PostalCode, req.Latitude, req.Longitude), &b)
 	if err != nil {

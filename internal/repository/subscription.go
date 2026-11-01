@@ -119,6 +119,9 @@ func (r *Repository) ReserveSubscriptionCheckout(ctx context.Context, actorID, b
 	if err != nil {
 		return billing, record, err
 	}
+	if err = requireNoAppleSubscription(ctx, tx, brandID); err != nil {
+		return billing, record, err
+	}
 	if billing.ActiveBranches < 1 {
 		return billing, record, ErrInvalidRequest
 	}

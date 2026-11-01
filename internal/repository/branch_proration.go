@@ -38,6 +38,9 @@ func lockBranchBilling(ctx context.Context, tx pgx.Tx, actor, brand int64) (Bran
 	if err != nil {
 		return out, err
 	}
+	if err = requireNoAppleSubscription(ctx, tx, brand); err != nil {
+		return out, err
+	}
 	err = tx.QueryRow(ctx, `SELECT COALESCE(proveedor_suscripcion_id,''),referencia_externa,precio_sucursal_minor,COALESCE(full_unit_price_minor,precio_sucursal_minor),importe_mensual_minor,cantidad_sucursales,COALESCE(proximo_cobro_at,'epoch'::timestamptz),trial_ends_at,estado,EXTRACT(DAY FROM COALESCE(trial_ends_at,created_at) AT TIME ZONE 'America/Argentina/Buenos_Aires')::integer FROM suscripciones_marca WHERE marca_id=$1 FOR UPDATE`, brand).Scan(&out.ProviderID, &out.Reference, &out.Unit, &out.FullUnit, &out.Monthly, &out.Count, &out.Next, &out.Trial, &out.Status, &out.Anchor)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return out, ErrSubscriptionChangeRequired

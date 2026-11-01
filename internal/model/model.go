@@ -240,6 +240,7 @@ type UpdateStaffRequest struct {
 type AuthMethods struct {
 	Password bool `json:"password"`
 	Google   bool `json:"google"`
+	Apple    bool `json:"apple"`
 }
 type CurrentUser struct {
 	AdultConfirmed     bool         `json:"adult_confirmed"`
@@ -259,6 +260,7 @@ type AccountExportCard struct {
 	CreatedAt     time.Time `json:"created_at"`
 }
 type AccountExport struct {
+	AppleIdentity     *AppleIdentityExport     `json:"apple_identity,omitempty"`
 	FavoriteBranchIDs []int64                  `json:"sucursales_favoritas"`
 	ReviewProgress    []ReviewProgressExport   `json:"progreso_resenas"`
 	ReviewInvitations []ReviewInvitationExport `json:"invitaciones_resenas"`
@@ -645,6 +647,8 @@ type GoogleLinkRequest struct {
 	Password string `json:"password"`
 }
 type ReauthenticateRequest struct {
-	Password string `json:"password,omitempty"`
-	IDToken  string `json:"id_token,omitempty"`
+	Password string          `json:"password,omitempty"`
+	IDToken  string          `json:"id_token,omitempty"`
+	Apple    *AppleAuthProof `json:"apple,omitempty"`
+	Version  int             `json:"version,omitempty"`
 }

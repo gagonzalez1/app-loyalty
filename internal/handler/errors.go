@@ -35,6 +35,32 @@ func writeErr(c *gin.Context, err error) {
 	}
 
 	switch {
+	case errors.Is(err, repository.ErrAppleEnvironmentConflict):
+		web.Error(c, http.StatusForbidden, "APPLE_ENVIRONMENT_CONFLICT", "La compra pertenece a otro entorno de pruebas o producción", nil)
+	case errors.Is(err, service.ErrAppleAuthUnavailable):
+		web.Error(c, http.StatusServiceUnavailable, "APPLE_AUTH_UNAVAILABLE", "El acceso con Apple no está disponible", nil)
+	case errors.Is(err, repository.ErrAppleLinkRequired):
+		web.Error(c, http.StatusConflict, "APPLE_LINK_REQUIRED", "Ingresá a tu cuenta y vinculá Apple desde tu perfil", nil)
+	case errors.Is(err, repository.ErrAppleIdentityConflict):
+		web.Error(c, http.StatusConflict, "APPLE_IDENTITY_CONFLICT", "La identidad Apple ya está vinculada a otra cuenta", nil)
+	case errors.Is(err, service.ErrAppleTransactionInvalid):
+		web.Error(c, http.StatusBadRequest, "APPLE_TRANSACTION_INVALID", "No se pudo verificar la compra con Apple", nil)
+	case errors.Is(err, repository.ErrAppleReadOnly):
+		web.Error(c, http.StatusForbidden, "APPLE_READ_ONLY", "La marca está en modo de consulta. Regularizá la suscripción para operar", nil)
+	case errors.Is(err, repository.ErrAppleChainConflict):
+		web.Error(c, http.StatusConflict, "APPLE_CHAIN_CONFLICT", "La compra ya está asociada a otra cuenta o marca", nil)
+	case errors.Is(err, repository.ErrAppleIntentRequired):
+		web.Error(c, http.StatusConflict, "APPLE_INTENT_REQUIRED", "Iniciá la compra desde tu cuenta antes de sincronizar", nil)
+	case errors.Is(err, repository.ErrAppleOfferUnavailable):
+		web.Error(c, http.StatusConflict, "APPLE_OFFER_UNAVAILABLE", "El beneficio no tiene una oferta Apple disponible. No se inició una compra", nil)
+	case errors.Is(err, repository.ErrAppleTrialActive):
+		web.Error(c, http.StatusConflict, "APPLE_TRIAL_ACTIVE", "La prueba gratuita de Puntazo todavía está vigente", nil)
+	case errors.Is(err, repository.ErrAppleCapacity):
+		web.Error(c, http.StatusConflict, "APPLE_CAPACITY", "La cantidad de sucursales supera la capacidad del plan", nil)
+	case errors.Is(err, repository.ErrAppleProductConflict):
+		web.Error(c, http.StatusConflict, "APPLE_PRODUCT_CONFLICT", "El producto Apple no corresponde al programa de la marca", nil)
+	case errors.Is(err, repository.ErrBillingProviderConflict):
+		web.Error(c, http.StatusConflict, "BILLING_PROVIDER_CONFLICT", "La marca ya tiene una suscripción con otro proveedor", nil)
 	case errors.Is(err, challenge.ErrUnavailable):
 		web.Error(c, http.StatusServiceUnavailable, "CAPTCHA_UNAVAILABLE", "El desafío de seguridad no está disponible", nil)
 	case errors.Is(err, challenge.ErrRequired):
@@ -71,7 +97,7 @@ func writeErr(c *gin.Context, err error) {
 	case errors.Is(err, service.ErrBillingRejected):
 		web.Error(c, http.StatusServiceUnavailable, "BILLING_REJECTED", "Mercado Pago rechazó el checkout. Podés volver a intentarlo", nil)
 	case errors.Is(err, service.ErrBillingProviderFailure):
-		web.Error(c, http.StatusServiceUnavailable, "BILLING_PROVIDER_ERROR", "La operación no se completó: Mercado Pago no la confirmó; consultá el estado antes de reintentar", nil)
+		web.Error(c, http.StatusServiceUnavailable, "BILLING_PROVIDER_ERROR", "La operación no se completó: el proveedor de pagos no la confirmó; consultá el estado antes de reintentar", nil)
 	case errors.Is(err, service.ErrSubscriptionExists):
 		web.Error(c, http.StatusConflict, "SUBSCRIPTION_EXISTS", "La marca ya tiene una suscripción activa o pendiente", nil)
 	case errors.Is(err, repository.ErrSubscriptionChangeRequired):

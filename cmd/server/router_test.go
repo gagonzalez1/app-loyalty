@@ -27,12 +27,17 @@ func TestRouteInventoryAndAuthentication(t *testing.T) {
 		"POST /v1/auth/email-change/confirm",
 		"POST /v1/auth/password-reset/request", "POST /v1/auth/password-reset/confirm",
 		"GET /v1/invitaciones/:token", "POST /v1/invitaciones/:token/registrar",
-		"POST /v1/mercado-pago/webhooks",
+		"POST /v1/mercado-pago/webhooks", "POST /v1/auth/apple", "POST /v1/auth/apple/challenge", "POST /v1/apple/app-store/notifications",
 		"POST /v1/referidos/validacion",
 		"POST /v1/backoffice/login",
 		"POST /auth/register", "POST /auth/login", "POST /auth/google",
 	}
 	protected := []struct{ method, pattern, request string }{
+		{"POST", "/v1/auth/apple/link", "/v1/auth/apple/link"},
+		{"GET", "/v1/marcas/:brand_id/billing", "/v1/marcas/1/billing"},
+		{"GET", "/v1/marcas/:brand_id/billing/apple/catalog", "/v1/marcas/1/billing/apple/catalog"},
+		{"POST", "/v1/marcas/:brand_id/billing/apple/intents", "/v1/marcas/1/billing/apple/intents"},
+		{"POST", "/v1/marcas/:brand_id/billing/apple/sync", "/v1/marcas/1/billing/apple/sync"},
 		{"GET", "/v1/marcas/:brand_id/sucursales/:resource_id/menu", "/v1/marcas/1/sucursales/1/menu"},
 		{"POST", "/v1/marcas/:brand_id/sucursales/:resource_id/menu/documentos", "/v1/marcas/1/sucursales/1/menu/documentos"},
 		{"PUT", "/v1/marcas/:brand_id/sucursales/:resource_id/menu/publicacion", "/v1/marcas/1/sucursales/1/menu/publicacion"},

@@ -17,7 +17,7 @@ on:
       - "go.sum"
       - "openapi.yaml"
   push:
-    branches: [main, testing]
+    branches: [main, testing, develop]
     paths:
       - ".github/workflows/backend.yml"
       - ".github/workflows/deploy-production.yml"
