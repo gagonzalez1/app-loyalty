@@ -24,3 +24,21 @@ func (h *Handler) ConfirmAdult(c *gin.Context) {
 	}
 	h.Me(c)
 }
+
+func (h *Handler) RequireAdult(c *gin.Context) {
+	a, ok := actor(c)
+	if !ok {
+		c.Abort()
+		return
+	}
+	confirmed, err := h.Repo.AdultConfirmed(c.Request.Context(), a.ID)
+	if err != nil {
+		web.AbortError(c, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "No se pudo verificar la confirmación de edad", nil)
+		return
+	}
+	if !confirmed {
+		web.AbortError(c, http.StatusForbidden, "ADULT_CONFIRMATION_REQUIRED", "Puntazo es para personas de 18 años o más", nil)
+		return
+	}
+	c.Next()
+}

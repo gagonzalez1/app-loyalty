@@ -28,6 +28,7 @@ func newRouter(h *handler.Handler, tokens *auth.Tokens, logger *slog.Logger) *gi
 	// before the SSE handler, and the handler revalidates the session while open.
 	stream := r.Group("/v1")
 	stream.Use(middleware.RequireAuth(tokens, h.Repo))
+	stream.Use(h.RequireAdult)
 	stream.GET("/clientes/me/tarjetas/events", h.CardEventsStream)
 	rest := r.Group("")
 	rest.Use(middleware.Timeout(12 * time.Second))
@@ -72,7 +73,6 @@ func newRouter(h *handler.Handler, tokens *auth.Tokens, logger *slog.Logger) *gi
 	authenticated := v1.Group("")
 	authenticated.Use(middleware.RequireAuth(tokens, h.Repo))
 	authenticated.GET("/me", h.Me)
-	// Compatibility endpoint for older clients; historical declarations no longer gate access.
 	authenticated.POST("/me/age-confirmation", h.ConfirmAdult)
 	authenticated.PATCH("/me", h.UpdateMe)
 	authenticated.POST("/me/email-change/request", h.RequestEmailChange)
@@ -83,9 +83,10 @@ func newRouter(h *handler.Handler, tokens *auth.Tokens, logger *slog.Logger) *gi
 	authenticated.POST("/auth/google/link", h.LinkGoogle)
 	authenticated.POST("/auth/apple/link", h.LinkApple)
 	authenticated.POST("/auth/reauthenticate", h.Reauthenticate)
+	authenticated.Use(h.RequireAdult)
 	registerMerchantRoutes(authenticated, h)
 	registerCustomerRoutes(authenticated, h)
 	registerMovementRoutes(authenticated, h)
-	registerLegacyRoutes(rest, h, middleware.RequireAuth(tokens, h.Repo))
+	registerLegacyRoutes(rest, h, middleware.RequireAuth(tokens, h.Repo), h.RequireAdult)
 	return r
 }
