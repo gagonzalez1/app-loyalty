@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"clientesFrecuentes/internal/appleidentity"
 	"clientesFrecuentes/internal/auth"
 	"clientesFrecuentes/internal/cardevents"
 	"clientesFrecuentes/internal/challenge"
@@ -106,6 +107,15 @@ func main() {
 	go (push.WebWorker{Repo: repo, Logger: logger, Subject: cfg.PublicAppURL}).Run(workerCtx)
 	go (maintenance.Worker{Repo: repo, Store: mediaStore, Logger: logger, Config: cfg}).Run(workerCtx)
 	svc := service.New(repo, tokens, cfg, mediaStore)
+	identity, err := appleidentity.New(appleidentity.Config{ClientID: cfg.AppleIdentityClientID, TeamID: cfg.AppleIdentityTeamID, KeyID: cfg.AppleIdentityKeyID, PrivateKeyPEM: string(cfg.AppleIdentityPrivateKeyPEM), RedirectURI: cfg.AppleIdentityRedirectURI})
+	if err != nil {
+		logger.Error("invalid Apple identity configuration")
+		os.Exit(1)
+	}
+	if identity != nil {
+		svc.AppleIdentity = identity
+	}
+	go svc.RunAppleRevocations(workerCtx)
 	svc.Challenge = &challenge.Manager{Enabled: cfg.CaptchaEnabled, SiteKey: cfg.CaptchaSiteKey, Secret: cfg.CaptchaSecret, Hostnames: cfg.CaptchaHostnames, Store: limiter}
 	if cfg.MercadoPagoProvider == "api" {
 		svc.Billing = mercadopago.New(cfg.MercadoPagoAPIURL, cfg.MercadoPagoAccessToken, cfg.MercadoPagoTimeout)

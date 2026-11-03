@@ -35,6 +35,12 @@ func writeErr(c *gin.Context, err error) {
 	}
 
 	switch {
+	case errors.Is(err, service.ErrAppleAuthUnavailable):
+		web.Error(c, http.StatusServiceUnavailable, "APPLE_AUTH_UNAVAILABLE", "El acceso con Apple no está disponible", nil)
+	case errors.Is(err, repository.ErrAppleLinkRequired):
+		web.Error(c, http.StatusConflict, "APPLE_LINK_REQUIRED", "Ingresá a tu cuenta y vinculá Apple desde tu perfil", nil)
+	case errors.Is(err, repository.ErrAppleIdentityConflict):
+		web.Error(c, http.StatusConflict, "APPLE_IDENTITY_CONFLICT", "La identidad Apple ya está vinculada a otra cuenta", nil)
 	case errors.Is(err, challenge.ErrUnavailable):
 		web.Error(c, http.StatusServiceUnavailable, "CAPTCHA_UNAVAILABLE", "El desafío de seguridad no está disponible", nil)
 	case errors.Is(err, challenge.ErrRequired):

@@ -81,6 +81,7 @@ func newRouter(h *handler.Handler, tokens *auth.Tokens, logger *slog.Logger) *gi
 	authenticated.GET("/me/export", h.ExportMe)
 	authenticated.DELETE("/me", h.DeleteMe)
 	authenticated.POST("/auth/google/link", h.LinkGoogle)
+	authenticated.POST("/auth/apple/link", h.LinkApple)
 	authenticated.POST("/auth/reauthenticate", h.Reauthenticate)
 	authenticated.Use(h.RequireAdult)
 	registerMerchantRoutes(authenticated, h)

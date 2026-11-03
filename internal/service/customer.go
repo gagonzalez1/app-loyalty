@@ -89,6 +89,11 @@ func (s *Service) AnonymizeCurrentUser(ctx context.Context, actorID int64, expec
 	if err != nil {
 		return model.Anonymization{}, err
 	}
+	// Apple failure must not undo account deletion. Its encrypted revocation is
+	// queued in the same database transaction and retried by the worker.
+	if s.AppleIdentity != nil && s.AppleIdentity.Enabled() {
+		_, _ = s.ProcessAppleRevocations(ctx, 20)
+	}
 	// Attempt immediately; a durable queue retries storage failures.
 	if s.Media != nil {
 		keys, lookupErr := s.Repo.PendingProfileDeletions(ctx, 500)

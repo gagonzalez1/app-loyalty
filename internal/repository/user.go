@@ -228,7 +228,7 @@ func (r *Repository) GetCurrentUser(ctx context.Context, id int64) (model.Curren
 		return model.CurrentUser{}, err
 	}
 	var methods model.AuthMethods
-	if err = r.Pool.QueryRow(ctx, `SELECT password_hash IS NOT NULL,google_id IS NOT NULL FROM usuarios WHERE id=$1`, id).Scan(&methods.Password, &methods.Google); err != nil {
+	if err = r.Pool.QueryRow(ctx, `SELECT password_hash IS NOT NULL,google_id IS NOT NULL,EXISTS(SELECT 1 FROM apple_identities a WHERE a.usuario_id=u.id) FROM usuarios u WHERE id=$1`, id).Scan(&methods.Password, &methods.Google, &methods.Apple); err != nil {
 		return model.CurrentUser{}, err
 	}
 	return model.CurrentUser{User: u, Memberships: memberships, OnboardingComplete: onboardingComplete, AdultConfirmed: confirmed, AuthMethods: methods}, nil

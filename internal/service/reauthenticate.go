@@ -14,6 +14,12 @@ func (s *Service) LinkGoogle(ctx context.Context, userID int64, sessionID string
 	return s.renewAuthentication(ctx, userID, sessionID, version, req.Password, req.IDToken, true)
 }
 func (s *Service) Reauthenticate(ctx context.Context, userID int64, sessionID string, version int, req model.ReauthenticateRequest) (model.AuthData, error) {
+	if req.Apple != nil {
+		if req.Password != "" || req.IDToken != "" {
+			return model.AuthData{}, ErrInvalidRequest
+		}
+		return s.renewAppleAuthentication(ctx, userID, sessionID, version, req.Version, *req.Apple, false)
+	}
 	if (req.Password == "") == (req.IDToken == "") {
 		return model.AuthData{}, ErrInvalidRequest
 	}

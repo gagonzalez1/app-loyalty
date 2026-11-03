@@ -53,6 +53,7 @@ type Service struct {
 	VerifyGoogleToken func(context.Context, string) (auth.GoogleIdentity, error)
 	Billing           BillingProvider
 	Places            ReviewPlaces
+	AppleIdentity     AppleIdentityProvider
 }
 
 type BillingProvider interface {

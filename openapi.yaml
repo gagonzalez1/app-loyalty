@@ -755,7 +755,7 @@ paths:
       tags: [Auth]
       operationId: reauthenticate
       x-puntazo-implementation: IMPLEMENTED
-      summary: Comprueba contraseña o mismo Google sub ya asociado; revoca sesiones y renueva auth_time
+      summary: Comprueba contraseña, Google o Apple ya asociado; revoca sesiones y renueva auth_time
       security: [{ bearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/ClientPlatform'
@@ -769,9 +769,12 @@ paths:
               oneOf:
                 - required: [password]
                 - required: [id_token]
+                - required: [apple]
               properties:
                 password: { type: string, maxLength: 72 }
                 id_token: { type: string }
+                apple: { $ref: '#/components/schemas/AppleProof' }
+                version: { type: integer, minimum: 1 }
       responses:
         '200':
           description: AuthData con sesión nueva
@@ -2554,6 +2557,89 @@ paths:
         '422': { description: Solicitud inválida }
         '429': { description: Límite por actor excedido; incluye Retry-After }
         '503': { description: DEPENDENCY_UNAVAILABLE; Google Places opcional o control de tráfico no disponible }
+  /auth/apple/challenge:
+    post:
+      tags: [Auth]
+      operationId: createAppleChallenge
+      summary: Nonce de un solo uso para Apple
+      x-puntazo-implementation: IMPLEMENTED_SOURCE_NOT_DEPLOYED
+      security: []
+      parameters:
+        - { name: X-Client-Platform, in: header, required: true, schema: { type: string, enum: [web, native] } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AppleChallengeRequest' }
+      responses:
+        '200':
+          description: Resultado confirmado por el servidor
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  data: { $ref: '#/components/schemas/AppleChallenge' }
+                  request_id: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409': { description: "La identidad ya requiere vinculación explícita o pertenece a otra cuenta" }
+        '503': { description: Proveedor Apple no configurado o no disponible }
+  /auth/apple:
+    post:
+      tags: [Auth]
+      operationId: loginApple
+      summary: Ingreso o alta con Apple
+      x-puntazo-implementation: IMPLEMENTED_SOURCE_NOT_DEPLOYED
+      security: []
+      parameters:
+        - { name: X-Client-Platform, in: header, required: true, schema: { type: string, enum: [web, native] } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AppleAuthRequest' }
+      responses:
+        '200':
+          description: Resultado confirmado por el servidor
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  data: { $ref: '#/components/schemas/AuthData' }
+                  request_id: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409': { description: "La identidad ya requiere vinculación explícita o pertenece a otra cuenta" }
+        '503': { description: Proveedor Apple no configurado o no disponible }
+  /auth/apple/link:
+    post:
+      tags: [Auth]
+      operationId: linkApple
+      summary: Vincular Apple a la cuenta autenticada
+      x-puntazo-implementation: IMPLEMENTED_SOURCE_NOT_DEPLOYED
+      parameters:
+        - { name: X-Client-Platform, in: header, required: true, schema: { type: string, enum: [web, native] } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AppleLinkRequest' }
+      responses:
+        '200':
+          description: Resultado confirmado por el servidor
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  data: { $ref: '#/components/schemas/AuthData' }
+                  request_id: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409': { description: "La identidad ya requiere vinculación explícita o pertenece a otra cuenta" }
+        '503': { description: Proveedor Apple no configurado o no disponible }
 components:
   securitySchemes:
     backofficeCookie:
@@ -3630,10 +3716,11 @@ components:
         auth_methods:
           type: object
           additionalProperties: false
-          required: [password, google]
+          required: [password, google, apple]
           properties:
             password: { type: boolean }
             google: { type: boolean }
+            apple: { type: boolean }
     CurrentUserEnvelope:
       type: object
       additionalProperties: false
@@ -4421,3 +4508,13 @@ components:
       properties:
         data: { $ref: '#/components/schemas/ReviewEvents' }
         request_id: { type: string }
+
+    AppleChallengeRequest: {"type": "object", "additionalProperties": false, "properties": {"purpose": {"type": "string", "enum": ["login", "link", "reauthenticate"]}}, "required": ["purpose"]}
+
+    AppleChallenge: {"type": "object", "additionalProperties": false, "properties": {"challenge_id": {"type": "string", "format": "uuid"}, "nonce": {"type": "string"}, "expires_at": {"type": "string", "format": "date-time"}}, "required": ["challenge_id", "nonce", "expires_at"]}
+
+    AppleAuthRequest: {"type": "object", "additionalProperties": false, "properties": {"challenge_id": {"type": "string", "format": "uuid"}, "id_token": {"type": "string"}, "authorization_code": {"type": "string"}, "name": {"type": "string"}, "apellido": {"type": "string"}, "account_type": {"type": "string", "enum": ["CLIENTE_FINAL", "PERSONAL_MARCA"]}, "merchant_registration": {"$ref": "#/components/schemas/GoogleMerchantRegistration"}}, "required": ["challenge_id", "id_token", "authorization_code"]}
+
+    AppleLinkRequest: {"type": "object", "additionalProperties": false, "properties": {"challenge_id": {"type": "string", "format": "uuid"}, "id_token": {"type": "string"}, "authorization_code": {"type": "string"}, "version": {"type": "integer", "minimum": 1}}, "required": ["challenge_id", "id_token", "authorization_code", "version"]}
+
+    AppleProof: { type: object, additionalProperties: false, required: [challenge_id, id_token, authorization_code], properties: { challenge_id: { type: string, format: uuid }, id_token: { type: string }, authorization_code: { type: string } } }
