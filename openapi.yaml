@@ -3712,7 +3712,7 @@ components:
           type: array
           items: { $ref: '#/components/schemas/Membership' }
         onboarding_complete: { type: boolean }
-        adult_confirmed: { type: boolean }
+        adult_confirmed: { type: boolean, description: Historical 18+ declaration; no longer required for access }
         auth_methods:
           type: object
           additionalProperties: false

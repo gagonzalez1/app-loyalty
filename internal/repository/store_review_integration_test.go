@@ -66,17 +66,15 @@ func TestPostgresCustomerStoreGoogleReview(t *testing.T) {
 	request := func(actor int64, kind string, branch int64) *httptest.ResponseRecorder {
 		t.Helper()
 		r := gin.New()
-		r.Use(func(c *gin.Context) { c.Set(middleware.ActorKey, middleware.Actor{ID: actor, AccountType: kind}) }, h.RequireAdult)
+		r.Use(func(c *gin.Context) { c.Set(middleware.ActorKey, middleware.Actor{ID: actor, AccountType: kind}) })
 		r.GET("/tiendas/:branch_id/resena-google", h.CustomerStoreGoogleReview)
 		response := httptest.NewRecorder()
 		r.ServeHTTP(response, httptest.NewRequest("GET", fmt.Sprintf("/tiendas/%d/resena-google", branch), nil))
 		return response
 	}
-	if response := request(f.other, "CLIENTE_FINAL", f.branch); response.Code != 403 || !strings.Contains(response.Body.String(), "ADULT_CONFIRMATION_REQUIRED") {
-		t.Fatalf("adult gate status=%d body=%s", response.Code, response.Body.String())
-	}
-	if err = repo.ConfirmAdult(ctx, f.other); err != nil {
-		t.Fatal(err)
+	// A customer without the historical 18+ declaration can use the service.
+	if confirmed, err := repo.AdultConfirmed(ctx, f.other); err != nil || confirmed {
+		t.Fatalf("unexpected historical declaration: confirmed=%v err=%v", confirmed, err)
 	}
 	response := request(f.other, "CLIENTE_FINAL", f.branch)
 	var envelope struct {
