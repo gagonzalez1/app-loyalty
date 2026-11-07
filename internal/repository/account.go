@@ -19,8 +19,8 @@ func (r *Repository) ExportAccount(ctx context.Context, id int64) (model.Account
 	defer tx.Rollback(ctx)
 
 	var out model.AccountExport
-	err = tx.QueryRow(ctx, `SELECT now(),id,email::text,nombre,apellido,alias,foto_url,tipo_cuenta,activo,(email_verified_at IS NOT NULL),auth_version,version,created_at,COALESCE(codigo_usuario,'#USER-'||lpad(id::text,greatest(4,length(id::text)),'0')) FROM usuarios WHERE id=$1 AND activo AND deleted_at IS NULL`, id).
-		Scan(&out.ExportedAt, &out.User.ID, &out.User.Email, &out.User.Name, &out.User.LastName, &out.User.Alias, &out.User.PhotoURL, &out.User.AccountType, &out.User.Active, &out.User.EmailVerified, &out.User.AuthVersion, &out.User.Version, &out.User.CreatedAt, &out.User.UserCode)
+	err = tx.QueryRow(ctx, `SELECT now(),id,email::text,nombre,apellido,alias,foto_url,tipo_cuenta,activo,(email_verified_at IS NOT NULL),auth_version,version,created_at,COALESCE(codigo_usuario,'#USER-'||lpad(id::text,greatest(4,length(id::text)),'0')),last_app_opened_at FROM usuarios WHERE id=$1 AND activo AND deleted_at IS NULL`, id).
+		Scan(&out.ExportedAt, &out.User.ID, &out.User.Email, &out.User.Name, &out.User.LastName, &out.User.Alias, &out.User.PhotoURL, &out.User.AccountType, &out.User.Active, &out.User.EmailVerified, &out.User.AuthVersion, &out.User.Version, &out.User.CreatedAt, &out.User.UserCode, &out.LastAppOpenedAt)
 	if err != nil {
 		return model.AccountExport{}, err
 	}
@@ -308,7 +308,7 @@ func (r *Repository) AnonymizeAccount(ctx context.Context, id int64, expectedVer
 	if _, err = tx.Exec(ctx, `UPDATE solicitudes_idempotentes SET actor_scope=CASE WHEN actor_scope=$2 OR actor_scope=$3 THEN $1 ELSE actor_scope END,fingerprint=decode(repeat('00',32),'hex'),response_body=CASE WHEN estado='COMPLETED' THEN '{}'::bytea ELSE NULL END WHERE actor_scope=$2 OR actor_scope=$3 OR strpos(convert_from(COALESCE(response_body,''::bytea),'UTF8'),$4)>0`, "deleted-user:"+strconv.FormatInt(id, 10), "demo-email:"+currentEmail, "user:"+strconv.FormatInt(id, 10), currentEmail); err != nil {
 		return time.Time{}, err
 	}
-	command, err := tx.Exec(ctx, `UPDATE usuarios SET email=('deleted-' || id || '@anon.invalid')::citext,password_hash=NULL,google_id=NULL,nombre='Cuenta anonimizada',apellido=NULL,alias=NULL,foto_url=NULL,qr_hash=NULL,activo=false,email_verified_at=NULL,auth_version=auth_version+1,version=version+1,deleted_at=$2 WHERE id=$1 AND version=$3`, id, deletedAt, expectedVersion)
+	command, err := tx.Exec(ctx, `UPDATE usuarios SET email=('deleted-' || id || '@anon.invalid')::citext,password_hash=NULL,google_id=NULL,nombre='Cuenta anonimizada',apellido=NULL,alias=NULL,foto_url=NULL,qr_hash=NULL,activo=false,email_verified_at=NULL,last_app_opened_at=NULL,auth_version=auth_version+1,version=version+1,deleted_at=$2 WHERE id=$1 AND version=$3`, id, deletedAt, expectedVersion)
 	if err != nil {
 		return time.Time{}, err
 	}

@@ -822,6 +822,29 @@ paths:
       responses:
         '204': { description: 'Familia revocada; idempotente, web cookie o native refresh_token' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
+  /me/app-open:
+    post:
+      tags: [Cuenta]
+      summary: Registra una apertura de la app autenticada
+      operationId: recordAppOpening
+      x-puntazo-implementation: IMPLEMENTED
+      description: Guarda la hora del servidor para la cuenta autenticada. El identificador del cuerpo sólo valida que la cuenta no cambió durante el envío.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [user_id]
+              properties:
+                user_id: { type: integer, format: int64, minimum: 1 }
+      responses:
+        '204': { description: Apertura procesada }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { description: La cuenta autenticada no coincide con la esperada }
+        '422': { description: Cuerpo de solicitud inválido }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /me/age-confirmation:
     post:
       tags: [Cuenta]
@@ -1914,7 +1937,7 @@ paths:
                         type: array
                         items:
                           type: object
-                          required: [id, name, last_name, email, account_type, active, email_verified_at, created_at]
+                          required: [id, name, last_name, email, account_type, active, email_verified_at, created_at, last_app_opened_at]
                           properties:
                             id: { type: integer, format: int64 }
                             name: { type: string }
@@ -1924,6 +1947,7 @@ paths:
                             active: { type: boolean }
                             email_verified_at: { type: [string, 'null'], format: date-time }
                             created_at: { type: string, format: date-time }
+                            last_app_opened_at: { type: [string, 'null'], format: date-time }
         '422': { description: Filtros o paginación inválidos }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { description: Requiere ADMIN_SISTEMA }
@@ -3753,6 +3777,7 @@ components:
           type: array
           items: { $ref: '#/components/schemas/ReviewInvitationExport' }
         exported_at: { $ref: '#/components/schemas/Timestamp' }
+        last_app_opened_at: { type: [string, 'null'], format: date-time }
         usuario: { $ref: '#/components/schemas/User' }
         membresias:
           type: array

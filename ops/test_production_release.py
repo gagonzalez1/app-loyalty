@@ -98,6 +98,20 @@ class SafetyTests(unittest.TestCase):
         with self.assertRaisesRegex(release.ReleaseError, 'contiguous'):
             release.migration_files(self.root)
 
+    def test_reserved_apple_versions_do_not_block_independent_migration(self):
+        files = self.files(46)
+        applied = list(files)[:44]
+        files['0045'].unlink()
+        without_billing = release.migration_files(self.root)
+        self.assertEqual(release.migration_plan(without_billing, applied), [files['0046']])
+        self.assertEqual(release.migration_plan(without_billing, list(without_billing)), [])
+        files['0045'].write_text('-- deploy: expand\nSELECT 1;\n')
+        self.assertEqual(release.migration_plan(release.migration_files(self.root), list(without_billing)),
+                         [files['0045']])
+        files['0044'].unlink()
+        with self.assertRaisesRegex(release.ReleaseError, 'downgrade refused'):
+            release.migration_plan(release.migration_files(self.root), applied)
+
     def test_applied_sql_cannot_be_rewritten_or_renamed(self):
         incoming = {'0035': 'digest'}
         release.validate_history(['0035'], incoming, incoming)

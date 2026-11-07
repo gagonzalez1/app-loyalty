@@ -73,6 +73,7 @@ func TestRouteInventoryAndAuthentication(t *testing.T) {
 		{"POST", "/v1/clientes/me/resenas/:invitation_id/reserva", "/v1/clientes/me/resenas/00000000-0000-0000-0000-000000000001/reserva"},
 		{"POST", "/v1/clientes/me/resenas/:invitation_id/eventos", "/v1/clientes/me/resenas/00000000-0000-0000-0000-000000000001/eventos"},
 		{"GET", "/v1/me", "/v1/me"},
+		{"POST", "/v1/me/app-open", "/v1/me/app-open"},
 		{"POST", "/v1/me/age-confirmation", "/v1/me/age-confirmation"},
 		{"PATCH", "/v1/me", "/v1/me"},
 		{"POST", "/v1/me/email-change/request", "/v1/me/email-change/request"},

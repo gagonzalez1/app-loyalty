@@ -83,7 +83,7 @@ ALLOW_MIGRATION_DOWN=true go run ./cmd/migrate down
 | `DEMO_SIGNUP_ENABLED` | Habilita o cierra nuevas altas gratuitas sin bloquear cuentas existentes. |
 | `CORS_ORIGINS` | Orígenes web exactos permitidos, separados por comas; habilita credenciales para la cookie HttpOnly de refresh. |
 | `GOOGLE_CLIENT_ID` | Audiencia web de Google; opcional para el alias legado. |
-| `EXPECTED_SCHEMA_VERSION` | Versión de esquema requerida por readiness; por defecto `0043`. |
+| `EXPECTED_SCHEMA_VERSION` | Versión de esquema requerida por readiness; por defecto `0046`. |
 | `MERCADO_PAGO_PROVIDER` | `api` habilita checkout y webhooks de suscripciones; `disabled` los mantiene apagados. |
 | `MERCADO_PAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET` | Secretos del backend para crear suscripciones y validar notificaciones. Nunca se exponen al frontend. |
 | `MERCADO_PAGO_BRANCH_PRICE_CENTS` | Precio mensual de Sellos por sucursal activa; por defecto `2500000` (ARS 25.000) para el piloto; configurable por entorno. |
@@ -341,6 +341,6 @@ Solicitar un código rota la verificación pendiente e invalida enlaces anterior
 la API de enlaces sigue disponible. Verificación, reset e invitaciones conservan
 propósitos separados. Capture se permite sólo en desarrollo para pruebas locales.
 
-Esquema requerido: `0043`. Los números 0036–0042 están reservados por historial de
+Esquema requerido: `0046`. Los números 0036–0042 están reservados por historial de
 testing; readiness valida el manifiesto de migraciones incluido en el binario,
 permitiendo esos huecos sin aceptar migraciones faltantes o inesperadas.

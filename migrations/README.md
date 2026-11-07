@@ -198,3 +198,12 @@ los logos y agrega cobertura de permisos, búsqueda y concurrencia; las
 implementaciones anteriores del mapa se consolidan en los archivos `store.go`.
 Las referencias anteriores a tablas inertes o dependencias aún abiertas
 describen el estado histórico de la propuesta.
+
+## Última apertura de la app (0046)
+
+Agrega `usuarios.last_app_opened_at` como fecha opcional. Las cuentas existentes
+conservan el valor nulo hasta su primera apertura autenticada registrada. La
+API requiere `EXPECTED_SCHEMA_VERSION=0046` después de aplicar la migración.
+Los números 0044 y 0045 pertenecen a identidad y facturación de Apple,
+respectivamente. Conservá cualquier migración ya aplicada en el candidato.
+La reversión de 0046 elimina las fechas registradas.

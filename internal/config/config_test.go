@@ -244,14 +244,14 @@ func TestTrustedProxyCIDRsRejectBroadMalformedTrustInput(t *testing.T) {
 	}
 }
 
-func TestCurrentFeaturesRequireSchema0044(t *testing.T) {
+func TestCurrentFeaturesRequireSchema0046(t *testing.T) {
 	setRequiredEnv(t)
 	t.Setenv("EXPECTED_SCHEMA_VERSION", "")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.ExpectedSchemaVersion != "0044" {
+	if cfg.ExpectedSchemaVersion != "0046" {
 		t.Fatalf("schema=%q", cfg.ExpectedSchemaVersion)
 	}
 }

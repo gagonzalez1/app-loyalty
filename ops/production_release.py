@@ -28,6 +28,9 @@ TOKEN = Path('/root/.coolify-api-token-puntazo-root')
 PUBLIC = 'https://api.puntazo.pro'
 SHA = re.compile(r'[0-9a-f]{40}')
 TERMINAL = {'finished', 'failed', 'cancelled'}
+# Apple identity (0044) and Apple billing (0045) have independent promotion
+# paths. Either can be absent from a source branch until its SQL is integrated.
+RESERVED_MIGRATION_VERSIONS = {'0044', '0045'}
 
 # Existing main/testing SQL must remain byte-identical. These exact expansions
 # were reviewed during PR reconciliation; unknown migrations still need a marker.
@@ -65,6 +68,16 @@ def command(text):
     return match.groups()
 
 
+def migration_sequence(versions):
+    if not versions:
+        return False
+    seen = set(versions)
+    return list(versions) == [
+        version for i in range(1, int(max(seen)) + 1)
+        if (version := f'{i:04}') in seen or version not in RESERVED_MIGRATION_VERSIONS
+    ]
+
+
 def migration_files(directory):
     files = {}
     for path in sorted(directory.glob('*.up.sql')):
@@ -73,16 +86,16 @@ def migration_files(directory):
         version = path.name[:4]
         require(version not in files, 'Duplicate migration version')
         files[version] = path
-    require(files and list(files) == [f'{i:04}' for i in range(1, len(files) + 1)],
+    require(migration_sequence(files),
             'Migration source must be contiguous from 0001')
     return files
 
 
 def migration_plan(files, applied):
-    require(applied == [f'{i:04}' for i in range(1, len(applied) + 1)],
-            'Database migration history has gaps or invalid versions')
-    require(len(applied) >= 35, 'Schemas older than 0035 require a separately reviewed bootstrap')
-    require(len(applied) <= len(files), 'Database is ahead of the selected release; downgrade refused')
+    require(all(version in files for version in applied),
+            'Database has migrations absent from the selected release; downgrade refused')
+    require(migration_sequence(applied), 'Database migration history has gaps or invalid versions')
+    require('0035' in applied, 'Schemas older than 0035 require a separately reviewed bootstrap')
     pending = [p for version, p in files.items() if version not in applied]
     for path in pending:
         reviewed_digest = REVIEWED_EXPAND_MIGRATIONS.get(path.name)

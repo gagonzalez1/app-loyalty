@@ -265,6 +265,7 @@ type AccountExport struct {
 	ReviewProgress    []ReviewProgressExport   `json:"progreso_resenas"`
 	ReviewInvitations []ReviewInvitationExport `json:"invitaciones_resenas"`
 	ExportedAt        time.Time                `json:"exported_at"`
+	LastAppOpenedAt   *time.Time               `json:"last_app_opened_at"`
 	User              User                     `json:"usuario"`
 	Memberships       []Membership             `json:"membresias"`
 	Cards             []AccountExportCard      `json:"tarjetas"`

@@ -19,6 +19,7 @@ type BackofficeRegisteredUser struct {
 	Active          bool       `json:"active"`
 	EmailVerifiedAt *time.Time `json:"email_verified_at"`
 	CreatedAt       time.Time  `json:"created_at"`
+	LastAppOpenedAt *time.Time `json:"last_app_opened_at"`
 }
 
 type BackofficeRegisteredUsersPage struct {
@@ -32,7 +33,7 @@ func (r *Repository) ListBackofficeRegisteredUsers(ctx context.Context, query, a
 	if limit < 1 || limit > 100 || before < 0 || !utf8.ValidString(query) || utf8.RuneCountInString(query) > 120 || (accountType != "" && accountType != "CLIENTE_FINAL" && accountType != "PERSONAL_MARCA") {
 		return out, ErrInvalidRequest
 	}
-	rows, err := r.Pool.Query(ctx, `SELECT id,nombre,apellido,email::text,tipo_cuenta,activo,email_verified_at,created_at
+	rows, err := r.Pool.Query(ctx, `SELECT id,nombre,apellido,email::text,tipo_cuenta,activo,email_verified_at,created_at,last_app_opened_at
  FROM usuarios WHERE deleted_at IS NULL
  AND ($1='' OR strpos(lower(concat_ws(' ',nombre,apellido,email::text)),lower($1))>0)
  AND ($2='' OR tipo_cuenta=$2) AND ($3::bigint=0 OR id<$3)
@@ -43,7 +44,7 @@ func (r *Repository) ListBackofficeRegisteredUsers(ctx context.Context, query, a
 	defer rows.Close()
 	for rows.Next() {
 		var user BackofficeRegisteredUser
-		if err := rows.Scan(&user.ID, &user.Name, &user.LastName, &user.Email, &user.AccountType, &user.Active, &user.EmailVerifiedAt, &user.CreatedAt); err != nil {
+		if err := rows.Scan(&user.ID, &user.Name, &user.LastName, &user.Email, &user.AccountType, &user.Active, &user.EmailVerifiedAt, &user.CreatedAt, &user.LastAppOpenedAt); err != nil {
 			return out, err
 		}
 		out.Items = append(out.Items, user)

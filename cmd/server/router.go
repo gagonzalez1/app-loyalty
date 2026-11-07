@@ -73,6 +73,7 @@ func newRouter(h *handler.Handler, tokens *auth.Tokens, logger *slog.Logger) *gi
 	authenticated := v1.Group("")
 	authenticated.Use(middleware.RequireAuth(tokens, h.Repo))
 	authenticated.GET("/me", h.Me)
+	authenticated.POST("/me/app-open", h.RecordAppOpening)
 	authenticated.POST("/me/age-confirmation", h.ConfirmAdult)
 	authenticated.PATCH("/me", h.UpdateMe)
 	authenticated.POST("/me/email-change/request", h.RequestEmailChange)
