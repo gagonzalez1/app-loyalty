@@ -114,6 +114,10 @@ func (h *Handler) UploadMenuDocument(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if language == model.MenuEnglish {
+		writeErr(c, repository.ErrForbidden)
+		return
+	}
 	version, ok := menuVersion(c)
 	if !ok {
 		return
@@ -186,6 +190,10 @@ func (h *Handler) changeMenu(c *gin.Context, action string) {
 	}
 	language, ok := menuLanguage(c)
 	if !ok {
+		return
+	}
+	if language == model.MenuEnglish {
+		writeErr(c, repository.ErrForbidden)
 		return
 	}
 	version, ok := menuVersion(c)
