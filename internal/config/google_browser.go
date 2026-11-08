@@ -8,7 +8,7 @@ import (
 )
 
 func loadGoogleBrowserConfiguration(c *Config) error {
-	c.GoogleBrowserRedirectURI = strings.TrimSpace(os.Getenv("GOOGLE_BROWSER_REDIRECT_URI"))
+	c.GoogleBrowserRedirectURI = "" // Keep the redirect disabled in the testing recovery image.
 	if c.GoogleBrowserRedirectURI == "" {
 		return nil
 	}
