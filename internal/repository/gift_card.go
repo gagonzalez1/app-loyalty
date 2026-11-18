@@ -1,0 +1,180 @@
+package repository
+
+import (
+	"context"
+	"crypto/sha256"
+	"errors"
+	"strings"
+	"time"
+
+	"clientesFrecuentes/internal/model"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+)
+
+type GiftCardToken struct {
+	ID, Token, Hint string
+	Hash            [32]byte
+}
+
+func GiftCardHash(token string) [32]byte { return sha256.Sum256([]byte(token)) }
+
+func (r *Repository) CreateGiftCardBatch(ctx context.Context, actorID, brandID int64, req model.GiftCardCreateRequest, tokens []GiftCardToken, claimBase string) (model.GiftCardBatch, error) {
+	tx, err := r.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	if err != nil {
+		return model.GiftCardBatch{}, err
+	}
+	defer tx.Rollback(ctx)
+	var programID int64
+	var programType, brandName, branchName string
+	err = tx.QueryRow(ctx, `SELECT p.id,p.tipo,m.nombre,s.nombre FROM membresias_marca mm JOIN marcas m ON m.id=mm.marca_id AND m.activo JOIN programas_fidelidad p ON p.marca_id=m.id AND p.activo JOIN sucursales s ON s.id=$3 AND s.marca_id=m.id AND s.activo LEFT JOIN membresias_sucursales ms ON ms.membresia_id=mm.id AND ms.sucursal_id=s.id AND ms.activo WHERE mm.usuario_id=$1 AND mm.marca_id=$2 AND mm.activo AND (mm.rol IN ('PROPIETARIO','ADMINISTRADOR') OR ms.sucursal_id IS NOT NULL)`, actorID, brandID, req.BranchID).Scan(&programID, &programType, &brandName, &branchName)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return model.GiftCardBatch{}, ErrNotFound
+	}
+	if err != nil {
+		return model.GiftCardBatch{}, err
+	}
+	id := uuid.New()
+	now := r.Now().UTC()
+	_, err = tx.Exec(ctx, `INSERT INTO gift_card_batches(id,marca_id,sucursal_id,programa_id,creado_por,titulo,programa_tipo,cantidad,total_codigos,expires_at,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, id, brandID, req.BranchID, programID, actorID, strings.TrimSpace(req.Title), programType, req.Amount, req.Quantity, req.ExpiresAt, now)
+	if err != nil {
+		return model.GiftCardBatch{}, err
+	}
+	codes := make([]model.GiftCardCode, 0, len(tokens))
+	for _, token := range tokens {
+		_, err = tx.Exec(ctx, `INSERT INTO gift_card_codes(id,batch_id,token_hash,token_hint) VALUES($1,$2,$3,$4)`, token.ID, id, token.Hash[:], token.Hint)
+		if err != nil {
+			return model.GiftCardBatch{}, err
+		}
+		codes = append(codes, model.GiftCardCode{ID: token.ID, Token: token.Token, ClaimURL: strings.TrimRight(claimBase, "/") + "/gift-card/" + token.Token, TokenHint: token.Hint})
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return model.GiftCardBatch{}, normalize(err)
+	}
+	return model.GiftCardBatch{ID: id.String(), BrandID: brandID, BrandName: brandName, BranchID: req.BranchID, BranchName: branchName, Title: strings.TrimSpace(req.Title), ProgramType: programType, Amount: req.Amount, Quantity: req.Quantity, Status: "ACTIVA", ExpiresAt: req.ExpiresAt, CreatedAt: now, Codes: codes}, nil
+}
+
+func (r *Repository) ListGiftCardBatches(ctx context.Context, actorID, brandID int64) ([]model.GiftCardBatch, error) {
+	rows, err := r.Pool.Query(ctx, `SELECT b.id,b.marca_id,m.nombre,b.sucursal_id,s.nombre,b.titulo,b.programa_tipo,b.cantidad,b.total_codigos,count(c.redeemed_at),b.estado,b.expires_at,b.created_at FROM gift_card_batches b JOIN marcas m ON m.id=b.marca_id JOIN sucursales s ON s.id=b.sucursal_id JOIN membresias_marca mm ON mm.marca_id=b.marca_id AND mm.usuario_id=$1 AND mm.activo LEFT JOIN gift_card_codes c ON c.batch_id=b.id WHERE b.marca_id=$2 GROUP BY b.id,m.nombre,s.nombre ORDER BY b.created_at DESC`, actorID, brandID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.GiftCardBatch{}
+	for rows.Next() {
+		var b model.GiftCardBatch
+		if err = rows.Scan(&b.ID, &b.BrandID, &b.BrandName, &b.BranchID, &b.BranchName, &b.Title, &b.ProgramType, &b.Amount, &b.Quantity, &b.RedeemedCount, &b.Status, &b.ExpiresAt, &b.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
+func (r *Repository) RevokeGiftCardBatch(ctx context.Context, actorID, brandID int64, batchID string) error {
+	tag, err := r.Pool.Exec(ctx, `UPDATE gift_card_batches b SET estado='REVOCADA' FROM membresias_marca mm WHERE b.id=$1 AND b.marca_id=$2 AND mm.marca_id=b.marca_id AND mm.usuario_id=$3 AND mm.activo AND mm.rol IN ('PROPIETARIO','ADMINISTRADOR')`, batchID, brandID, actorID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *Repository) GiftCardClaim(ctx context.Context, token string) (model.GiftCardClaim, error) {
+	h := GiftCardHash(token)
+	var c model.GiftCardClaim
+	err := r.Pool.QueryRow(ctx, `SELECT m.nombre,s.nombre,b.titulo,b.programa_tipo,b.cantidad,b.expires_at,(gc.redeemed_at IS NOT NULL) FROM gift_card_codes gc JOIN gift_card_batches b ON b.id=gc.batch_id JOIN marcas m ON m.id=b.marca_id JOIN sucursales s ON s.id=b.sucursal_id WHERE gc.token_hash=$1 AND b.estado='ACTIVA'`, h[:]).Scan(&c.BrandName, &c.BranchName, &c.Title, &c.ProgramType, &c.Amount, &c.ExpiresAt, &c.Redeemed)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return c, ErrNotFound
+	}
+	if err != nil {
+		return c, err
+	}
+	if c.ExpiresAt != nil && !r.Now().UTC().Before(*c.ExpiresAt) {
+		return c, ErrNotFound
+	}
+	return c, nil
+}
+
+func (r *Repository) RedeemGiftCard(ctx context.Context, customerID int64, token string) (model.GiftCardRedemption, error) {
+	tx, err := r.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	if err != nil {
+		return model.GiftCardRedemption{}, err
+	}
+	defer tx.Rollback(ctx)
+	h := GiftCardHash(token)
+	var codeID, batchID string
+	var brandID, branchID, programID, amount int64
+	var title, programType, brandName, branchName, status string
+	var expires, redeemed *time.Time
+	err = tx.QueryRow(ctx, `SELECT gc.id,gc.batch_id,b.marca_id,b.sucursal_id,b.programa_id,b.cantidad,b.titulo,b.programa_tipo,m.nombre,s.nombre,b.estado,b.expires_at,gc.redeemed_at FROM gift_card_codes gc JOIN gift_card_batches b ON b.id=gc.batch_id JOIN marcas m ON m.id=b.marca_id AND m.activo JOIN sucursales s ON s.id=b.sucursal_id AND s.activo JOIN programas_fidelidad p ON p.id=b.programa_id AND p.activo WHERE gc.token_hash=$1 FOR UPDATE OF gc`, h[:]).Scan(&codeID, &batchID, &brandID, &branchID, &programID, &amount, &title, &programType, &brandName, &branchName, &status, &expires, &redeemed)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return model.GiftCardRedemption{}, ErrNotFound
+	}
+	if err != nil {
+		return model.GiftCardRedemption{}, err
+	}
+	if status != "ACTIVA" || redeemed != nil || (expires != nil && !r.Now().UTC().Before(*expires)) {
+		return model.GiftCardRedemption{}, ErrGiftCardUnavailable
+	}
+	var accountType string
+	if err = tx.QueryRow(ctx, `SELECT tipo_cuenta FROM usuarios WHERE id=$1 AND activo AND deleted_at IS NULL FOR SHARE`, customerID).Scan(&accountType); err != nil {
+		return model.GiftCardRedemption{}, ErrNotFound
+	}
+	if accountType != "CLIENTE_FINAL" {
+		return model.GiftCardRedemption{}, ErrInvalidRequest
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO tarjetas(usuario_id,marca_id) VALUES($1,$2) ON CONFLICT(usuario_id,marca_id) DO NOTHING`, customerID, brandID)
+	if err != nil {
+		return model.GiftCardRedemption{}, err
+	}
+	var cardID, before int64
+	err = tx.QueryRow(ctx, `SELECT id,CASE WHEN $3='PUNTOS' THEN saldo_puntos ELSE saldo_sellos END FROM tarjetas WHERE usuario_id=$1 AND marca_id=$2 AND activo FOR UPDATE`, customerID, brandID, programType).Scan(&cardID, &before)
+	if err != nil {
+		return model.GiftCardRedemption{}, err
+	}
+	after := before + amount
+	column := "saldo_sellos"
+	if programType == "PUNTOS" {
+		column = "saldo_puntos"
+	}
+	if _, err = tx.Exec(ctx, `UPDATE tarjetas SET `+column+`=$1,version=version+1 WHERE id=$2`, after, cardID); err != nil {
+		return model.GiftCardRedemption{}, err
+	}
+	opID := uuid.New()
+	var movement model.Movement
+	err = tx.QueryRow(ctx, `INSERT INTO historial_movimientos(operation_id,tarjeta_id,marca_id,sucursal_id,usuario_operador_id,operacion,sentido,cantidad,saldo_anterior,saldo_posterior,programa_tipo,marca_nombre_snapshot,sucursal_nombre_snapshot,programa_id_snapshot) VALUES($1,$2,$3,$4,NULL,'ACUMULACION','CREDITO',$5,$6,$7,$8,$9,$10,$11) RETURNING id,occurred_at`, opID, cardID, brandID, branchID, amount, before, after, programType, brandName, branchName, programID).Scan(&movement.ID, &movement.OccurredAt)
+	if err != nil {
+		return model.GiftCardRedemption{}, err
+	}
+	tag, err := tx.Exec(ctx, `UPDATE gift_card_codes SET redeemed_by=$1,movement_id=$2,redeemed_at=now() WHERE id=$3 AND redeemed_at IS NULL`, customerID, movement.ID, codeID)
+	if err != nil || tag.RowsAffected() != 1 {
+		if err != nil {
+			return model.GiftCardRedemption{}, err
+		}
+		return model.GiftCardRedemption{}, ErrGiftCardUnavailable
+	}
+	movement.OperationID = opID.String()
+	movement.CardID = cardID
+	movement.BrandID = brandID
+	movement.BrandName = brandName
+	movement.BranchID = branchID
+	movement.BranchName = branchName
+	movement.Operation = "ACUMULACION"
+	movement.ProgramType = programType
+	movement.ProgramIDSnapshot = programID
+	movement.Direction = "CREDITO"
+	movement.Amount = amount
+	movement.BalanceBefore = before
+	movement.BalanceAfter = after
+	if _, err = tx.Exec(ctx, `SELECT pg_notify('puntazo_customer_cards',$1)`, customerID); err != nil {
+		return model.GiftCardRedemption{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return model.GiftCardRedemption{}, normalize(err)
+	}
+	return model.GiftCardRedemption{Claim: model.GiftCardClaim{BrandName: brandName, BranchName: branchName, Title: title, ProgramType: programType, Amount: amount, ExpiresAt: expires, Redeemed: true}, Movement: movement}, nil
+}

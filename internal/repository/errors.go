@@ -16,6 +16,7 @@ var (
 	ErrIdempotencyInProgress      = errors.New("idempotency in progress")
 	ErrPreviewExpired             = errors.New("preview expired")
 	ErrPreviewConsumed            = errors.New("preview consumed")
+	ErrGiftCardUnavailable        = errors.New("gift card unavailable")
 	ErrPreviewChanged             = errors.New("preview changed")
 	ErrInsufficientBalance        = errors.New("insufficient balance")
 	ErrInvalidRequest             = errors.New("invalid request")

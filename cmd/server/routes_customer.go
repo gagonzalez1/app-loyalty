@@ -7,6 +7,7 @@ import (
 )
 
 func registerCustomerRoutes(r *gin.RouterGroup, h *handler.Handler) {
+	r.POST("/clientes/me/gift-cards/canjear", h.RedeemGiftCard)
 	r.GET("/clientes/me", h.Customer)
 	r.GET("/clientes/me/tiendas", h.CustomerStoreLocations)
 	r.GET("/clientes/me/tiendas/:branch_id/resena-google", h.CustomerStoreGoogleReview)
