@@ -219,8 +219,8 @@ func TestPostgresDemoSellosLifecycle(t *testing.T) {
 	if _, err = pool.Exec(ctx, `INSERT INTO schema_migrations(version) VALUES('0018')`); err != nil {
 		t.Fatal(err)
 	}
-	for _, version := range []string{"0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040", "0041", "0042", "0043"} {
-		migration, readErr := os.ReadFile(filepath.Join("..", "..", "migrations", version+map[string]string{"0019": "_mercado_pago_subscriptions", "0020": "_subscription_checkout_reservation", "0021": "_expo_push", "0022": "_google_reviews", "0023": "_referrals", "0024": "_referral_billing", "0025": "_subscription_prices", "0026": "_subscription_price_change_history", "0027": "_referral_campaign_editing", "0028": "_influencer_welcome_emails", "0029": "_subscription_confirmation_emails", "0030": "_email_change", "0031": "_card_templates", "0032": "_first_login_trial", "0033": "_user_codes", "0034": "_branch_proration", "0035": "_closed_test_privacy", "0036": "_web_push", "0037": "_movement_reversals", "0038": "_benefit_expiration", "0039": "_card_templates", "0040": "_store_favorites", "0041": "_branch_pdf_menus", "0042": "_branch_pdf_30mib", "0043": "_email_verification_codes"}[version]+".up.sql"))
+	for _, version := range []string{"0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040", "0041", "0042", "0043", "0044"} {
+		migration, readErr := os.ReadFile(filepath.Join("..", "..", "migrations", version+map[string]string{"0019": "_mercado_pago_subscriptions", "0020": "_subscription_checkout_reservation", "0021": "_expo_push", "0022": "_google_reviews", "0023": "_referrals", "0024": "_referral_billing", "0025": "_subscription_prices", "0026": "_subscription_price_change_history", "0027": "_referral_campaign_editing", "0028": "_influencer_welcome_emails", "0029": "_subscription_confirmation_emails", "0030": "_email_change", "0031": "_card_templates", "0032": "_first_login_trial", "0033": "_user_codes", "0034": "_branch_proration", "0035": "_closed_test_privacy", "0036": "_web_push", "0037": "_movement_reversals", "0038": "_benefit_expiration", "0039": "_card_templates", "0040": "_store_favorites", "0041": "_branch_pdf_menus", "0042": "_branch_pdf_30mib", "0043": "_email_verification_codes", "0044": "_gift_cards"}[version]+".up.sql"))
 		if readErr != nil {
 			t.Fatal(readErr)
 		}
@@ -246,7 +246,7 @@ func TestPostgresDemoSellosLifecycle(t *testing.T) {
 		t.Fatalf("legacy session revoked=%t err=%v", legacySessionRevoked, err)
 	}
 	outboxKey := []byte("01234567890123456789012345678901")
-	cfg := config.Config{JWTSecret: "jwt-secret-0123456789012345678901", JWTIssuer: "puntazo", QRPepper: "qr-pepper-01234567890123456789012", DemoSignupEnabled: true, ExpectedSchemaVersion: "0043", PublicAppURL: "https://app.puntazo.test", OutboxEncryptionKey: outboxKey, MediaURLTTL: 5 * time.Minute, MercadoPagoBranchPrice: 12300, MercadoPagoPointsPrice: 45600}
+	cfg := config.Config{JWTSecret: "jwt-secret-0123456789012345678901", JWTIssuer: "puntazo", QRPepper: "qr-pepper-01234567890123456789012", DemoSignupEnabled: true, ExpectedSchemaVersion: "0044", PublicAppURL: "https://app.puntazo.test", OutboxEncryptionKey: outboxKey, MediaURLTTL: 5 * time.Minute, MercadoPagoBranchPrice: 12300, MercadoPagoPointsPrice: 45600}
 	repo := repository.New(pool, outboxKey)
 	var referralAdminID int64
 	if err = pool.QueryRow(ctx, `INSERT INTO backoffice_users(email,password_hash,totp_secret,role) VALUES('admin-referral@example.com','unused','ABCDEFGHIJKLMNOPQRSTUVWX23456789','ADMIN_SISTEMA') RETURNING id`).Scan(&referralAdminID); err != nil {
@@ -1804,6 +1804,29 @@ func TestPostgresDemoSellosLifecycle(t *testing.T) {
 	if err = pool.QueryRow(ctx, `SELECT count(*) FROM referral_codes WHERE campaign_id=$1 AND source_brand_id=$2 AND source_kind='MERCHANT'`, stampsCampaign.ID, pausedBrandEnvelope.Data.Merchant.BrandID).Scan(&codeCount); err != nil || codeCount != 1 {
 		t.Fatalf("reactivated campaign did not issue merchant code count=%d err=%v", codeCount, err)
 	}
+	giftCustomer, err := svc.RegisterCustomer(ctx, model.RegisterCustomerRequest{Email: "gift-client@example.com", Password: "gift-client-pass", Name: "Gift", LastName: "Client"})
+	if err != nil {
+		t.Fatalf("gift customer: %v", err)
+	}
+	giftBatch, err := svc.CreateGiftCardBatch(ctx, merchant.User.ID, merchant.Merchant.BrandID, model.GiftCardCreateRequest{Title: "Bienvenida", BranchID: merchant.Merchant.Branch.ID, Amount: 3, Quantity: 2})
+	if err != nil || len(giftBatch.Codes) != 2 || giftBatch.Codes[0].Token == "" || !strings.Contains(giftBatch.Codes[0].ClaimURL, giftBatch.Codes[0].Token) {
+		t.Fatalf("gift batch=%+v err=%v", giftBatch, err)
+	}
+	claim, err := svc.GiftCardClaim(ctx, giftBatch.Codes[0].Token)
+	if err != nil || claim.Amount != 3 || claim.ProgramType != "SELLOS" || claim.Redeemed {
+		t.Fatalf("gift claim=%+v err=%v", claim, err)
+	}
+	redemption, err := svc.RedeemGiftCard(ctx, giftCustomer.User.ID, giftBatch.Codes[0].Token)
+	if err != nil || redemption.Movement.BalanceBefore != 0 || redemption.Movement.BalanceAfter != 3 {
+		t.Fatalf("gift redemption=%+v err=%v", redemption, err)
+	}
+	if _, err = svc.RedeemGiftCard(ctx, giftCustomer.User.ID, giftBatch.Codes[0].Token); !errors.Is(err, repository.ErrGiftCardUnavailable) {
+		t.Fatalf("gift replay: %v", err)
+	}
+	giftBatches, err := svc.ListGiftCardBatches(ctx, merchant.User.ID, merchant.Merchant.BrandID)
+	if err != nil || len(giftBatches) != 1 || giftBatches[0].RedeemedCount != 1 {
+		t.Fatalf("gift batches=%+v err=%v", giftBatches, err)
+	}
 	merchantAccount, err := svc.CurrentUser(ctx, merchant.User.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -1833,7 +1856,7 @@ func TestPostgresDemoSellosLifecycle(t *testing.T) {
 	if err = repo.ConfirmEmailChange(ctx, changeHash[:], time.Now()); !errors.Is(err, repository.ErrIdentityTokenInvalid) {
 		t.Fatalf("email change token reused: %v", err)
 	}
-	if err = repo.CheckSchema(ctx, "0043"); err != nil {
+	if err = repo.CheckSchema(ctx, "0044"); err != nil {
 		t.Fatal(err)
 	}
 	if err = repo.CheckSchema(ctx, "9999"); err == nil {

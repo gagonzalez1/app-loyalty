@@ -620,6 +620,58 @@ type MovementReversal struct {
 	OccurredAt    time.Time `json:"occurred_at"`
 }
 
+type GiftCardCreateRequest struct {
+	Title     string     `json:"title"`
+	BranchID  int64      `json:"branch_id"`
+	Amount    int64      `json:"amount"`
+	Quantity  int        `json:"quantity"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+type GiftCardCode struct {
+	ID        string `json:"id"`
+	Token     string `json:"token,omitempty"`
+	ClaimURL  string `json:"claim_url,omitempty"`
+	TokenHint string `json:"token_hint"`
+	Redeemed  bool   `json:"redeemed"`
+}
+
+type GiftCardBatch struct {
+	ID            string         `json:"id"`
+	BrandID       int64          `json:"brand_id"`
+	BrandName     string         `json:"brand_name,omitempty"`
+	BranchID      int64          `json:"branch_id"`
+	BranchName    string         `json:"branch_name,omitempty"`
+	Title         string         `json:"title"`
+	ProgramType   string         `json:"program_type"`
+	Amount        int64          `json:"amount"`
+	Quantity      int            `json:"quantity"`
+	RedeemedCount int            `json:"redeemed_count"`
+	Status        string         `json:"status"`
+	ExpiresAt     *time.Time     `json:"expires_at,omitempty"`
+	CreatedAt     time.Time      `json:"created_at"`
+	Codes         []GiftCardCode `json:"codes,omitempty"`
+}
+
+type GiftCardClaim struct {
+	BrandName   string     `json:"brand_name"`
+	BranchName  string     `json:"branch_name"`
+	Title       string     `json:"title"`
+	ProgramType string     `json:"program_type"`
+	Amount      int64      `json:"amount"`
+	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
+	Redeemed    bool       `json:"redeemed"`
+}
+
+type GiftCardRedeemRequest struct {
+	Token string `json:"token"`
+}
+
+type GiftCardRedemption struct {
+	Claim    GiftCardClaim `json:"gift_card"`
+	Movement Movement      `json:"movement"`
+}
+
 type LegacyRegisterRequest struct {
 	LastName string `json:"apellido"`
 	Name     string `json:"nombre"`
