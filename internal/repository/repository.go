@@ -7,9 +7,10 @@ import (
 )
 
 type Repository struct {
-	Pool            *pgxpool.Pool
-	Now             func() time.Time
-	OutboxCipherKey []byte
+	Pool                    *pgxpool.Pool
+	Now                     func() time.Time
+	OutboxCipherKey         []byte
+	AppleBillingEnvironment string
 }
 
 func New(pool *pgxpool.Pool, outboxCipherKey ...[]byte) *Repository {

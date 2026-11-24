@@ -57,8 +57,11 @@ func (r *Repository) ListCustomerStoreLocations(ctx context.Context, actorID int
 	rows, err := r.Pool.Query(ctx, `SELECT m.id,m.nombre,s.id,s.nombre,s.direccion,s.localidad,s.provincia,
  CASE WHEN s.latitud BETWEEN -90 AND 90 AND s.longitud BETWEEN -180 AND 180 THEN s.latitud END,
  CASE WHEN s.latitud BETWEEN -90 AND 90 AND s.longitud BETWEEN -180 AND 180 THEN s.longitud END,
- m.descripcion,COALESCE((SELECT a.object_key FROM archivos_marca a WHERE a.marca_id=m.id AND a.tipo='LOGO' AND a.estado='ACTIVA' ORDER BY a.created_at DESC,a.id DESC LIMIT 1),''),
- COALESCE((SELECT jsonb_agg(jsonb_build_object('id',b.id,'nombre',b.nombre,'descripcion',b.descripcion) ORDER BY b.id)
+ m.descripcion,s.perfil_publico,
+ EXISTS(SELECT 1 FROM branch_menus bm JOIN branch_menu_documents d ON d.id=bm.published_document_id AND d.estado='READY' WHERE bm.sucursal_id=s.id AND bm.marca_id=m.id AND bm.language='es'),
+ EXISTS(SELECT 1 FROM branch_menus bm JOIN branch_menu_documents d ON d.id=bm.published_document_id AND d.estado='READY' WHERE bm.sucursal_id=s.id AND bm.marca_id=m.id AND bm.language='en'),
+ COALESCE((SELECT a.object_key FROM archivos_marca a WHERE a.marca_id=m.id AND a.tipo='LOGO' AND a.estado='ACTIVA' ORDER BY a.created_at DESC,a.id DESC LIMIT 1),''),
+ COALESCE((SELECT jsonb_agg(jsonb_build_object('id',b.id,'nombre',b.nombre,'descripcion',b.descripcion,'required_stamps',b.requisito_sellos,'required_points',b.requisito_puntos) ORDER BY b.id)
  FROM beneficios b JOIN programas_fidelidad p ON p.id=b.programa_id AND p.activo
  WHERE p.marca_id=m.id AND b.activo AND b.deleted_at IS NULL AND (b.expires_on IS NULL OR b.expires_on >= (now() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date)),'[]'::jsonb),
  EXISTS(SELECT 1 FROM sucursales_favoritas f WHERE f.usuario_id=$1 AND f.sucursal_id=s.id),
@@ -75,7 +78,7 @@ func (r *Repository) ListCustomerStoreLocations(ctx context.Context, actorID int
 	for rows.Next() {
 		var item model.StoreLocation
 		var benefits []byte
-		if err = rows.Scan(&item.BrandID, &item.BrandName, &item.BranchID, &item.BranchName, &item.Address, &item.Locality, &item.Province, &item.Latitude, &item.Longitude, &item.Description, &item.LogoObjectKey, &benefits, &item.Favorite, &item.Favorites); err != nil {
+		if err = rows.Scan(&item.BrandID, &item.BrandName, &item.BranchID, &item.BranchName, &item.Address, &item.Locality, &item.Province, &item.Latitude, &item.Longitude, &item.Description, &item.PublicProfile, &item.HasMenu, &item.HasEnglishMenu, &item.LogoObjectKey, &benefits, &item.Favorite, &item.Favorites); err != nil {
 			return nil, err
 		}
 		if err = json.Unmarshal(benefits, &item.Benefits); err != nil {

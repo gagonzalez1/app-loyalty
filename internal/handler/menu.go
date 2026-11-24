@@ -14,6 +14,18 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func menuLanguage(c *gin.Context) (model.MenuLanguage, bool) {
+	switch c.Query("lang") {
+	case "", "es":
+		return model.MenuSpanish, true
+	case "en":
+		return model.MenuEnglish, true
+	default:
+		writeErr(c, service.ErrInvalidRequest)
+		return "", false
+	}
+}
+
 func menuVersion(c *gin.Context) (int, bool) {
 	if strings.TrimSpace(c.GetHeader("If-Match")) == "" {
 		web.Error(c, http.StatusPreconditionRequired, "PRECONDITION_REQUIRED", "Volvé a cargar el menú antes de modificarlo", nil)
@@ -63,8 +75,6 @@ func (h *Handler) writeMenuError(c *gin.Context, err error) {
 		web.Error(c, 422, "MENU_PDF_INVALID", "El PDF está dañado o no se pudo validar", nil)
 	case errors.Is(err, service.ErrMenuPDFPassword):
 		web.Error(c, 422, "MENU_PDF_PASSWORD_PROTECTED", "El PDF debe estar sin contraseña ni cifrado", nil)
-	case errors.Is(err, service.ErrMenuPDFPages):
-		web.Error(c, 422, "MENU_PDF_PAGE_LIMIT", "El PDF debe tener entre 1 y 30 páginas", nil)
 	case errors.Is(err, service.ErrMenuStorage):
 		web.Error(c, 503, "MENU_STORAGE_UNAVAILABLE", "No pudimos guardar o abrir el PDF; reintentá", nil)
 	default:
@@ -84,7 +94,11 @@ func (h *Handler) BranchMenu(c *gin.Context) {
 	if !ok {
 		return
 	}
-	state, err := h.Service.BranchMenu(c.Request.Context(), a, b, branch)
+	language, ok := menuLanguage(c)
+	if !ok {
+		return
+	}
+	state, err := h.Service.BranchMenu(c.Request.Context(), a, b, branch, language)
 	if err != nil {
 		h.writeMenuError(c, err)
 		return
@@ -93,6 +107,10 @@ func (h *Handler) BranchMenu(c *gin.Context) {
 }
 func (h *Handler) UploadMenuDocument(c *gin.Context) {
 	a, b, branch, ok := h.privateMenuActor(c)
+	if !ok {
+		return
+	}
+	language, ok := menuLanguage(c)
 	if !ok {
 		return
 	}
@@ -151,7 +169,7 @@ func (h *Handler) UploadMenuDocument(c *gin.Context) {
 		writeErr(c, service.ErrInvalidRequest)
 		return
 	}
-	state, err := h.Service.UploadMenuDocument(c.Request.Context(), a, b, branch, version, header.Filename, body)
+	state, err := h.Service.UploadMenuDocument(c.Request.Context(), a, b, branch, language, version, header.Filename, body)
 	if err != nil {
 		h.writeMenuError(c, err)
 		return
@@ -163,6 +181,10 @@ func (h *Handler) UnpublishBranchMenu(c *gin.Context) { h.changeMenu(c, "unpubli
 func (h *Handler) DiscardMenuDraft(c *gin.Context)    { h.changeMenu(c, "discard") }
 func (h *Handler) changeMenu(c *gin.Context, action string) {
 	a, b, branch, ok := h.privateMenuActor(c)
+	if !ok {
+		return
+	}
+	language, ok := menuLanguage(c)
 	if !ok {
 		return
 	}
@@ -180,7 +202,7 @@ func (h *Handler) changeMenu(c *gin.Context, action string) {
 		}
 		document = req.DocumentID
 	}
-	state, err := h.Service.ChangeMenuPublication(c.Request.Context(), a, b, branch, version, action, document)
+	state, err := h.Service.ChangeMenuPublication(c.Request.Context(), a, b, branch, language, version, action, document)
 	if err != nil {
 		h.writeMenuError(c, err)
 		return
@@ -194,7 +216,11 @@ func (h *Handler) PublicBranchMenu(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	data, err := h.Service.PublicBranchMenu(c.Request.Context(), branch)
+	language, ok := menuLanguage(c)
+	if !ok {
+		return
+	}
+	data, err := h.Service.PublicBranchMenu(c.Request.Context(), branch, language)
 	if err != nil {
 		h.writeMenuError(c, err)
 		return

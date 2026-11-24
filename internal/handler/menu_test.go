@@ -19,7 +19,6 @@ func TestMenuPDFErrorsUseStableCodes(t *testing.T) {
 		{service.ErrMenuPDFType, 415, "MENU_PDF_TYPE_UNSUPPORTED"},
 		{service.ErrMenuPDFInvalid, 422, "MENU_PDF_INVALID"},
 		{service.ErrMenuPDFPassword, 422, "MENU_PDF_PASSWORD_PROTECTED"},
-		{service.ErrMenuPDFPages, 422, "MENU_PDF_PAGE_LIMIT"},
 		{service.ErrMenuStorage, 503, "MENU_STORAGE_UNAVAILABLE"},
 	} {
 		t.Run(tt.code, func(t *testing.T) {

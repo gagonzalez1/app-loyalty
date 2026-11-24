@@ -55,7 +55,7 @@ func cleanBranch(r *model.CreateBranchRequest) error {
 	if r.Name == "" || len(r.Name) > 120 || r.Latitude != nil && (*r.Latitude < -90 || *r.Latitude > 90) || r.Longitude != nil && (*r.Longitude < -180 || *r.Longitude > 180) {
 		return ErrInvalidRequest
 	}
-	return nil
+	return cleanBranchPublicProfile(r.PublicProfile)
 }
 func (s *Service) CreateBranch(c context.Context, a, b int64, r model.CreateBranchRequest) (model.Branch, error) {
 	if err := cleanBranch(&r); err != nil {
@@ -64,7 +64,7 @@ func (s *Service) CreateBranch(c context.Context, a, b int64, r model.CreateBran
 	return s.Repo.CreateBranch(c, a, b, r)
 }
 func (s *Service) UpdateBranch(c context.Context, a, b, id int64, v int, r model.UpdateBranchRequest) (model.Branch, error) {
-	base := model.CreateBranchRequest{Name: r.Name, Address: r.Address, Locality: r.Locality, Province: r.Province, PostalCode: r.PostalCode, Latitude: r.Latitude, Longitude: r.Longitude}
+	base := model.CreateBranchRequest{Name: r.Name, Address: r.Address, Locality: r.Locality, Province: r.Province, PostalCode: r.PostalCode, Latitude: r.Latitude, Longitude: r.Longitude, PublicProfile: r.PublicProfile}
 	if err := cleanBranch(&base); err != nil {
 		return model.Branch{}, err
 	}

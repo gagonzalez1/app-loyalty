@@ -73,6 +73,7 @@ paths:
       security: []
       x-puntazo-implementation: IMPLEMENTED
       parameters:
+        - { name: lang, in: query, schema: { type: string, enum: [es, en], default: es }, description: Idioma del PDF y su versión independiente }
         - { name: branch_id, in: path, required: true, schema: { type: integer, format: int64, minimum: 1 } }
       responses:
         '200':
@@ -101,6 +102,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
   /marcas/{brand_id}/sucursales/{branch_id}/menu:
     parameters:
+      - { name: lang, in: query, schema: { type: string, enum: [es, en], default: es }, description: Idioma del PDF y su versión independiente }
       - { $ref: '#/components/parameters/BrandId' }
       - { name: branch_id, in: path, required: true, schema: { type: integer, format: int64, minimum: 1 } }
     get:
@@ -128,6 +130,7 @@ paths:
         '503': { $ref: '#/components/responses/MenuStorageUnavailable' }
   /marcas/{brand_id}/sucursales/{branch_id}/menu/documentos:
     parameters:
+      - { name: lang, in: query, schema: { type: string, enum: [es, en], default: es }, description: Idioma del PDF y su versión independiente }
       - { $ref: '#/components/parameters/BrandId' }
       - { name: branch_id, in: path, required: true, schema: { type: integer, format: int64, minimum: 1 } }
     post:
@@ -152,7 +155,7 @@ paths:
               additionalProperties: false
               required: [archivo]
               properties:
-                archivo: { type: string, format: binary, description: PDF válido no cifrado de 1 a 30 páginas y hasta 30 MiB; admite escaneos }
+                archivo: { type: string, format: binary, description: PDF válido no cifrado con al menos una página y hasta 30 MiB; admite escaneos }
       responses:
         '201':
           description: Estado actual; borrador o publicación null cuando no existen
@@ -167,12 +170,13 @@ paths:
         '503': { $ref: '#/components/responses/MenuStorageUnavailable' }
         '412': { description: Versión desactualizada; PRECONDITION_FAILED, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '428': { $ref: '#/components/responses/MenuPreconditionRequired' }
-        '422': { description: 'INVALID_REQUEST o MENU_PDF_INVALID, MENU_PDF_PASSWORD_PROTECTED, MENU_PDF_PAGE_LIMIT', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '422': { description: 'INVALID_REQUEST o MENU_PDF_INVALID, MENU_PDF_PASSWORD_PROTECTED', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '413': { description: MENU_PDF_TOO_LARGE, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '415': { description: MENU_PDF_TYPE_UNSUPPORTED, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '429': { description: RATE_LIMITED, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /marcas/{brand_id}/sucursales/{branch_id}/menu/publicacion:
     parameters:
+      - { name: lang, in: query, schema: { type: string, enum: [es, en], default: es }, description: Idioma del PDF y su versión independiente }
       - { $ref: '#/components/parameters/BrandId' }
       - { name: branch_id, in: path, required: true, schema: { type: integer, format: int64, minimum: 1 } }
     put:
@@ -212,7 +216,7 @@ paths:
         '503': { $ref: '#/components/responses/MenuStorageUnavailable' }
         '412': { description: Versión desactualizada; PRECONDITION_FAILED, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '428': { $ref: '#/components/responses/MenuPreconditionRequired' }
-        '422': { description: 'INVALID_REQUEST o MENU_PDF_INVALID, MENU_PDF_PASSWORD_PROTECTED, MENU_PDF_PAGE_LIMIT', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '422': { description: 'INVALID_REQUEST o MENU_PDF_INVALID, MENU_PDF_PASSWORD_PROTECTED', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
     delete:
       tags: [Marcas]
       operationId: unpublishBranchPDFMenu
@@ -240,9 +244,10 @@ paths:
         '503': { $ref: '#/components/responses/MenuStorageUnavailable' }
         '412': { description: Versión desactualizada; PRECONDITION_FAILED, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '428': { $ref: '#/components/responses/MenuPreconditionRequired' }
-        '422': { description: 'INVALID_REQUEST o MENU_PDF_INVALID, MENU_PDF_PASSWORD_PROTECTED, MENU_PDF_PAGE_LIMIT', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '422': { description: 'INVALID_REQUEST o MENU_PDF_INVALID, MENU_PDF_PASSWORD_PROTECTED', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /marcas/{brand_id}/sucursales/{branch_id}/menu/borrador:
     parameters:
+      - { name: lang, in: query, schema: { type: string, enum: [es, en], default: es }, description: Idioma del PDF y su versión independiente }
       - { $ref: '#/components/parameters/BrandId' }
       - { name: branch_id, in: path, required: true, schema: { type: integer, format: int64, minimum: 1 } }
     delete:
@@ -272,7 +277,7 @@ paths:
         '503': { $ref: '#/components/responses/MenuStorageUnavailable' }
         '412': { description: Versión desactualizada; PRECONDITION_FAILED, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '428': { $ref: '#/components/responses/MenuPreconditionRequired' }
-        '422': { description: 'INVALID_REQUEST o MENU_PDF_INVALID, MENU_PDF_PASSWORD_PROTECTED, MENU_PDF_PAGE_LIMIT', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '422': { description: 'INVALID_REQUEST o MENU_PDF_INVALID, MENU_PDF_PASSWORD_PROTECTED', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /clientes/me/tiendas:
     get:
       tags: [Clientes]
@@ -755,7 +760,7 @@ paths:
       tags: [Auth]
       operationId: reauthenticate
       x-puntazo-implementation: IMPLEMENTED
-      summary: Comprueba contraseña o mismo Google sub ya asociado; revoca sesiones y renueva auth_time
+      summary: Comprueba contraseña, Google o Apple ya asociado; revoca sesiones y renueva auth_time
       security: [{ bearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/ClientPlatform'
@@ -769,9 +774,12 @@ paths:
               oneOf:
                 - required: [password]
                 - required: [id_token]
+                - required: [apple]
               properties:
                 password: { type: string, maxLength: 72 }
                 id_token: { type: string }
+                apple: { $ref: '#/components/schemas/AppleProof' }
+                version: { type: integer, minimum: 1 }
       responses:
         '200':
           description: AuthData con sesión nueva
@@ -1879,6 +1887,51 @@ paths:
       responses:
         '200': { description: 'ID, email y rol de la cuenta interna' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
+  /backoffice/users:
+    get:
+      tags: [Backoffice]
+      operationId: listBackofficeRegisteredUsers
+      summary: Consulta personas registradas (ADMIN_SISTEMA)
+      description: Cuentas de producto sin baja. Excluye staff, contraseñas, identificadores de proveedores y QR. Orden por ID descendente; búsqueda literal sin distinción de mayúsculas. Respuesta sin caché.
+      security: [{ backofficeCookie: [] }]
+      x-puntazo-implementation: IMPLEMENTED
+      parameters:
+        - { in: query, name: q, schema: { type: string, maxLength: 120 }, description: Nombre/apellido/email }
+        - { in: query, name: account_type, schema: { type: string, enum: [CLIENTE_FINAL, PERSONAL_MARCA] } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { in: query, name: before, schema: { type: integer, format: int64, minimum: 1 }, description: next_cursor de la página anterior }
+      responses:
+        '200':
+          description: Página de personas registradas
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  request_id: { type: string }
+                  data:
+                    type: object
+                    required: [items, next_cursor]
+                    properties:
+                      next_cursor: { type: [string, 'null'] }
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          required: [id, name, last_name, email, account_type, active, email_verified_at, created_at]
+                          properties:
+                            id: { type: integer, format: int64 }
+                            name: { type: string }
+                            last_name: { type: [string, 'null'] }
+                            email: { type: string, format: email }
+                            account_type: { type: string, enum: [CLIENTE_FINAL, PERSONAL_MARCA] }
+                            active: { type: boolean }
+                            email_verified_at: { type: [string, 'null'], format: date-time }
+                            created_at: { type: string, format: date-time }
+        '422': { description: Filtros o paginación inválidos }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { description: Requiere ADMIN_SISTEMA }
   /backoffice/logout:
     post:
       tags: [Backoffice]
@@ -2509,6 +2562,423 @@ paths:
         '422': { description: Solicitud inválida }
         '429': { description: Límite por actor excedido; incluye Retry-After }
         '503': { description: DEPENDENCY_UNAVAILABLE; Google Places opcional o control de tráfico no disponible }
+  /auth/apple/challenge:
+    post:
+      tags: [Auth]
+      operationId: createAppleChallenge
+      summary: Nonce de un solo uso para Apple
+      x-puntazo-implementation: IMPLEMENTED_SOURCE_NOT_DEPLOYED
+      security: []
+      parameters:
+        - { name: X-Client-Platform, in: header, required: true, schema: { type: string, enum: [web, native] } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AppleChallengeRequest' }
+      responses:
+        '200':
+          description: Resultado confirmado por el servidor
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  data: { $ref: '#/components/schemas/AppleChallenge' }
+                  request_id: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409': { description: "Conflicto de identidad, intención, producto, oferta o compra" }
+        '503': { description: Proveedor Apple no configurado o no disponible }
+  /auth/apple:
+    post:
+      tags: [Auth]
+      operationId: loginApple
+      summary: Ingreso o alta con Apple
+      x-puntazo-implementation: IMPLEMENTED_SOURCE_NOT_DEPLOYED
+      security: []
+      parameters:
+        - { name: X-Client-Platform, in: header, required: true, schema: { type: string, enum: [web, native] } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AppleAuthRequest' }
+      responses:
+        '200':
+          description: Resultado confirmado por el servidor
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  data: { $ref: '#/components/schemas/AuthData' }
+                  request_id: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409': { description: "Conflicto de identidad, intención, producto, oferta o compra" }
+        '503': { description: Proveedor Apple no configurado o no disponible }
+  /auth/google/browser/config:
+    get:
+      tags: [Auth]
+      operationId: getGoogleBrowserConfig
+      summary: Consultar disponibilidad del acceso web con Google mediante redirección
+      x-puntazo-implementation: IMPLEMENTED_SOURCE_NOT_DEPLOYED
+      security: []
+      responses:
+        '200':
+          description: Disponibilidad del flujo
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  data:
+                    type: object
+                    required: [enabled]
+                    properties:
+                      enabled: { type: boolean }
+                  request_id: { type: string }
+  /auth/google/browser/start:
+    post:
+      tags: [Auth]
+      operationId: startGoogleBrowser
+      summary: Crear un intento vinculado al navegador para redirigir a Google
+      x-puntazo-implementation: IMPLEMENTED_SOURCE_NOT_DEPLOYED
+      security: []
+      parameters:
+        - { name: X-Client-Platform, in: header, required: true, schema: { type: string, const: web } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code_challenge]
+              properties:
+                code_challenge: { type: string, pattern: '^[A-Za-z0-9_-]{43}$', description: SHA-256 del verificador en Base64URL sin padding }
+      responses:
+        '200':
+          description: Intento válido por cinco minutos
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  data:
+                    type: object
+                    required: [flow_id, authorization_url, expires_at]
+                    properties:
+                      flow_id: { type: string, format: uuid }
+                      authorization_url: { type: string, format: uri }
+                      expires_at: { type: string, format: date-time }
+                  request_id: { type: string }
+        '400': { description: GOOGLE_BROWSER_INVALID }
+        '429': { description: Límite de intentos excedido }
+        '503': { description: GOOGLE_BROWSER_UNAVAILABLE o DEPENDENCY_UNAVAILABLE }
+  /auth/google/browser/callback:
+    post:
+      tags: [Auth]
+      operationId: receiveGoogleBrowserCallback
+      summary: Recibir el formulario de retorno de Google sin emitir una sesión
+      x-puntazo-implementation: IMPLEMENTED_SOURCE_NOT_DEPLOYED
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [state]
+              properties:
+                state: { type: string, format: uuid }
+                id_token: { type: string, maxLength: 16384 }
+                error: { type: string, maxLength: 128 }
+                iss: { type: string, const: 'https://accounts.google.com' }
+              oneOf:
+                - required: [id_token]
+                - required: [error]
+      responses:
+        '303':
+          description: Regresa al login del origen configurado con google_flow_id como única referencia
+          headers:
+            Location: { schema: { type: string, format: uri } }
+        '400': { description: GOOGLE_BROWSER_INVALID }
+        '429': { description: Límite de intentos excedido }
+        '503': { description: GOOGLE_BROWSER_UNAVAILABLE o DEPENDENCY_UNAVAILABLE }
+  /auth/google/browser/finish:
+    post:
+      tags: [Auth]
+      operationId: finishGoogleBrowser
+      summary: Recuperar la prueba Google verificada una sola vez desde el navegador que inició el intento
+      description: La sesión o el alta se tramitan después en POST /auth/google con esta prueba.
+      x-puntazo-implementation: IMPLEMENTED_SOURCE_NOT_DEPLOYED
+      security: []
+      parameters:
+        - { name: X-Client-Platform, in: header, required: true, schema: { type: string, const: web } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [flow_id, code_verifier]
+              properties:
+                flow_id: { type: string, format: uuid }
+                code_verifier: { type: string, pattern: '^[A-Za-z0-9._~-]{43,128}$' }
+      responses:
+        '200':
+          description: Credencial de Google verificada para el intento
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  data:
+                    type: object
+                    required: [id_token]
+                    properties:
+                      id_token: { type: string }
+                  request_id: { type: string }
+        '400': { description: GOOGLE_BROWSER_INVALID }
+        '409': { description: GOOGLE_BROWSER_CANCELLED }
+        '429': { description: Límite de intentos excedido }
+        '503': { description: GOOGLE_BROWSER_UNAVAILABLE o DEPENDENCY_UNAVAILABLE }
+  /auth/apple/browser/start:
+    post:
+      tags: [Auth]
+      operationId: startAppleBrowser
+      summary: Iniciar Apple para una cuenta ya vinculada
+      x-puntazo-implementation: IMPLEMENTED_SOURCE_NOT_DEPLOYED
+      security: [{}, { bearerAuth: [] }]
+      parameters:
+        - { name: X-Client-Platform, in: header, required: true, schema: { type: string, enum: [web, native] } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AppleBrowserStartRequest' }
+      responses:
+        '200':
+          description: Flujo que expira a los cinco minutos
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  data: { $ref: '#/components/schemas/AppleBrowserStart' }
+                  request_id: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '429': { description: Límite de intentos excedido }
+        '503': { description: APPLE_AUTH_UNAVAILABLE }
+  /auth/apple/browser/callback:
+    post:
+      tags: [Auth]
+      operationId: appleBrowserCallback
+      summary: Recibir el formulario de retorno de Apple
+      x-puntazo-implementation: IMPLEMENTED_SOURCE_NOT_DEPLOYED
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [state]
+              properties:
+                state: { type: string, format: uuid }
+                code: { type: string, maxLength: 4096 }
+                id_token: { type: string, maxLength: 16384 }
+                error: { type: string }
+      responses:
+        '303':
+          description: Regresa a la app o la web con una referencia temporal
+          headers:
+            Location: { schema: { type: string, format: uri } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '422': { description: Formulario inválido }
+        '503': { description: APPLE_AUTH_UNAVAILABLE }
+  /auth/apple/browser/finish:
+    post:
+      tags: [Auth]
+      operationId: finishAppleBrowser
+      summary: Canjear una prueba Apple de navegador por una sesión
+      x-puntazo-implementation: IMPLEMENTED_SOURCE_NOT_DEPLOYED
+      security: [{}, { bearerAuth: [] }]
+      parameters:
+        - { name: X-Client-Platform, in: header, required: true, schema: { type: string, enum: [web, native] } }
+        - { name: If-Match, in: header, description: Requerido para reautenticar, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AppleBrowserFinishRequest' }
+      responses:
+        '200':
+          description: Sesión emitida para el usuario vinculado a Apple
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  data: { $ref: '#/components/schemas/AuthData' }
+                  request_id: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409': { description: 'APPLE_AUTH_PENDING (admite reintento), APPLE_AUTH_CANCELLED o APPLE_LINK_REQUIRED' }
+        '412': { description: La versión de cuenta cambió }
+        '429': { description: Límite de intentos excedido }
+        '503': { description: APPLE_AUTH_UNAVAILABLE }
+  /auth/apple/link:
+    post:
+      tags: [Auth]
+      operationId: linkApple
+      summary: Vincular Apple a la cuenta autenticada
+      x-puntazo-implementation: IMPLEMENTED_SOURCE_NOT_DEPLOYED
+      parameters:
+        - { name: X-Client-Platform, in: header, required: true, schema: { type: string, enum: [web, native] } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AppleLinkRequest' }
+      responses:
+        '200':
+          description: Resultado confirmado por el servidor
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  data: { $ref: '#/components/schemas/AuthData' }
+                  request_id: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409': { description: "Conflicto de identidad, intención, producto, oferta o compra" }
+        '503': { description: Proveedor Apple no configurado o no disponible }
+  /marcas/{brand_id}/billing:
+    get:
+      tags: [Facturación]
+      operationId: getBrandBilling
+      summary: Derechos efectivos de facturación
+      x-puntazo-implementation: IMPLEMENTED_SOURCE_NOT_DEPLOYED
+      parameters:
+        - { $ref: '#/components/parameters/BrandId' }
+      responses:
+        '200':
+          description: Resultado confirmado por el servidor
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  data: { $ref: '#/components/schemas/BrandBillingState' }
+                  request_id: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409': { description: "Conflicto de identidad, intención, producto, oferta o compra" }
+        '503': { description: Proveedor Apple no configurado o no disponible }
+  /marcas/{brand_id}/billing/apple/catalog:
+    get:
+      tags: [Facturación]
+      operationId: getAppleCatalog
+      summary: Catálogo Apple y elegibilidad
+      x-puntazo-implementation: IMPLEMENTED_SOURCE_NOT_DEPLOYED
+      parameters:
+        - { $ref: '#/components/parameters/BrandId' }
+      responses:
+        '200':
+          description: Resultado confirmado por el servidor
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  data: { $ref: '#/components/schemas/AppleCatalog' }
+                  request_id: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409': { description: "Conflicto de identidad, intención, producto, oferta o compra" }
+        '503': { description: Proveedor Apple no configurado o no disponible }
+  /marcas/{brand_id}/billing/apple/intents:
+    post:
+      tags: [Facturación]
+      operationId: createAppleIntent
+      summary: Intención de compra o canje Apple
+      x-puntazo-implementation: IMPLEMENTED_SOURCE_NOT_DEPLOYED
+      parameters:
+        - { $ref: '#/components/parameters/BrandId' }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApplePurchaseIntentRequest' }
+      responses:
+        '201':
+          description: Resultado confirmado por el servidor
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  data: { $ref: '#/components/schemas/ApplePurchaseIntent' }
+                  request_id: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409': { description: "Conflicto de identidad, intención, producto, oferta o compra" }
+        '503': { description: Proveedor Apple no configurado o no disponible }
+  /marcas/{brand_id}/billing/apple/sync:
+    post:
+      tags: [Facturación]
+      operationId: syncApplePurchase
+      summary: Validar compra o restauración Apple
+      x-puntazo-implementation: IMPLEMENTED_SOURCE_NOT_DEPLOYED
+      parameters:
+        - { $ref: '#/components/parameters/BrandId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AppleSyncRequest' }
+      responses:
+        '200':
+          description: Resultado confirmado por el servidor
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  data: { $ref: '#/components/schemas/BrandBillingState' }
+                  request_id: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409': { description: "Conflicto de identidad, intención, producto, oferta o compra" }
+        '503': { description: Proveedor Apple no configurado o no disponible }
+  /apple/app-store/notifications:
+    post:
+      tags: [Facturación]
+      operationId: receiveAppleNotification
+      summary: Inbox durable de notificaciones Apple V2
+      x-puntazo-implementation: IMPLEMENTED_SOURCE_NOT_DEPLOYED
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AppleNotificationRequest' }
+      responses:
+        '200':
+          description: Resultado confirmado por el servidor
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409': { description: "Conflicto de identidad, intención, producto, oferta o compra" }
+        '503': { description: Proveedor Apple no configurado o no disponible }
 components:
   securitySchemes:
     backofficeCookie:
@@ -2657,7 +3127,7 @@ components:
         file_name: { type: string, maxLength: 160, description: Nombre saneado sin rutas }
         mime_type: { type: string, const: application/pdf }
         byte_size: { type: integer, format: int64, minimum: 1, maximum: 31457280 }
-        page_count: { type: integer, minimum: 1, maximum: 30 }
+        page_count: { type: integer, minimum: 1 }
         created_at: { type: string, format: date-time }
         url: { type: string, format: uri, description: URL HTTPS firmada; nunca clave interna de storage }
         url_expires_at: { type: string, format: date-time, description: Hasta 300 segundos desde la firma }
@@ -2722,9 +3192,11 @@ components:
         id: { type: integer, format: int64 }
         nombre: { type: string }
         descripcion: { type: string }
+        required_stamps: { type: integer, format: int64 }
+        required_points: { type: integer, format: int64 }
     StoreLocation:
       type: object
-      required: [brand_id, brand_name, branch_id, branch_name, beneficios, favorita, favoritos]
+      required: [brand_id, brand_name, branch_id, branch_name, beneficios, favorita, favoritos, has_menu, has_english_menu]
       properties:
         brand_id: { type: integer, format: int64 }
         brand_name: { type: string }
@@ -2738,7 +3210,10 @@ components:
         descripcion: { type: [string, 'null'] }
         categoria: { type: string }
         telefono: { type: string }
-        horarios: { type: string }
+        horarios: { type: string, description: Horarios en texto libre de clientes anteriores }
+        perfil_publico: { $ref: '#/components/schemas/BranchPublicProfile' }
+        has_menu: { type: boolean, description: Tiene un menú PDF en español publicado y disponible }
+        has_english_menu: { type: boolean, description: Tiene un menú PDF en inglés publicado y disponible }
         image_url: { type: string, description: URL temporal del logo real; puede omitirse }
         beneficios:
           type: array
@@ -3141,7 +3616,7 @@ components:
           properties:
             code:
               type: string
-              enum: [PRECONDITION_REQUIRED, MENU_PDF_TOO_LARGE, MENU_PDF_TYPE_UNSUPPORTED, MENU_PDF_INVALID, MENU_PDF_PASSWORD_PROTECTED, MENU_PDF_PAGE_LIMIT, MENU_STORAGE_UNAVAILABLE, INVALID_REQUEST, REGISTRATION_PROFILE_REQUIRED, REFERRAL_CODE_INVALID, ACCOUNT_TYPE_REQUIRED, IDENTITY_TOKEN_INVALID, INVITATION_INVALID, INVITATION_EMAIL_MISMATCH, SELF_ROLE_CHANGE_FORBIDDEN, EMAIL_VERIFICATION_REQUIRED, UNAUTHENTICATED, RECENT_AUTH_REQUIRED, FORBIDDEN, NOT_FOUND, EMAIL_EXISTS, RESOURCE_CONFLICT, PROGRAM_TYPE_HAS_BENEFITS, PROGRAM_TYPE_IMMUTABLE, IDEMPOTENCY_CONFLICT, IDEMPOTENCY_IN_PROGRESS, PREVIEW_EXPIRED, PREVIEW_CONSUMED, PREVIEW_CHANGED, PRECONDITION_FAILED, BILLING_IN_PROGRESS, BILLING_UNAVAILABLE, BILLING_PROVIDER_ERROR, INSUFFICIENT_BALANCE, DEMO_SIGNUP_DISABLED, DEMO_ACCESS_DENIED, MEDIA_TOO_LARGE, MEDIA_TYPE_UNSUPPORTED, MEDIA_STORAGE_UNAVAILABLE, RATE_LIMITED, DEPENDENCY_UNAVAILABLE, INTERNAL_ERROR]
+              enum: [PRECONDITION_REQUIRED, MENU_PDF_TOO_LARGE, MENU_PDF_TYPE_UNSUPPORTED, MENU_PDF_INVALID, MENU_PDF_PASSWORD_PROTECTED, MENU_STORAGE_UNAVAILABLE, INVALID_REQUEST, REGISTRATION_PROFILE_REQUIRED, REFERRAL_CODE_INVALID, ACCOUNT_TYPE_REQUIRED, IDENTITY_TOKEN_INVALID, INVITATION_INVALID, INVITATION_EMAIL_MISMATCH, SELF_ROLE_CHANGE_FORBIDDEN, EMAIL_VERIFICATION_REQUIRED, UNAUTHENTICATED, RECENT_AUTH_REQUIRED, FORBIDDEN, NOT_FOUND, EMAIL_EXISTS, RESOURCE_CONFLICT, PROGRAM_TYPE_HAS_BENEFITS, PROGRAM_TYPE_IMMUTABLE, IDEMPOTENCY_CONFLICT, IDEMPOTENCY_IN_PROGRESS, PREVIEW_EXPIRED, PREVIEW_CONSUMED, PREVIEW_CHANGED, PRECONDITION_FAILED, BILLING_IN_PROGRESS, BILLING_UNAVAILABLE, BILLING_PROVIDER_ERROR, INSUFFICIENT_BALANCE, DEMO_SIGNUP_DISABLED, DEMO_ACCESS_DENIED, MEDIA_TOO_LARGE, MEDIA_TYPE_UNSUPPORTED, MEDIA_STORAGE_UNAVAILABLE, RATE_LIMITED, DEPENDENCY_UNAVAILABLE, INTERNAL_ERROR]
             message: { type: string }
             details: { type: object, additionalProperties: true }
         request_id: { $ref: '#/components/schemas/RequestId' }
@@ -3433,6 +3908,7 @@ components:
         branch_postal_code: { type: string, maxLength: 20 }
         branch_latitude: { type: number, format: double, minimum: -90, maximum: 90, description: Debe enviarse junto con branch_longitude }
         branch_longitude: { type: number, format: double, minimum: -180, maximum: 180, description: Debe enviarse junto con branch_latitude }
+        perfil_publico: { $ref: '#/components/schemas/BranchPublicProfile' }
         program_type: { type: string, enum: [SELLOS, PUNTOS] }
         referral_code: { type: string, pattern: '^[A-Za-z0-9-]{4,40}$', description: Código opcional; se congela una única atribución por marca }
     LoginRequest:
@@ -3478,6 +3954,7 @@ components:
         branch_postal_code: { type: string, maxLength: 20 }
         branch_latitude: { type: number, format: double, minimum: -90, maximum: 90, description: Debe enviarse junto con branch_longitude }
         branch_longitude: { type: number, format: double, minimum: -180, maximum: 180, description: Debe enviarse junto con branch_latitude }
+        perfil_publico: { $ref: '#/components/schemas/BranchPublicProfile' }
         program_type: { type: string, enum: [SELLOS, PUNTOS] }
         referral_code: { type: string, pattern: '^[A-Za-z0-9-]{4,40}$', description: Código opcional al crear la marca; se ignora al ingresar a una cuenta existente }
     CreateInvitationRequest:
@@ -3585,10 +4062,11 @@ components:
         auth_methods:
           type: object
           additionalProperties: false
-          required: [password, google]
+          required: [password, google, apple]
           properties:
             password: { type: boolean }
             google: { type: boolean }
+            apple: { type: boolean }
     CurrentUserEnvelope:
       type: object
       additionalProperties: false
@@ -3649,6 +4127,46 @@ components:
         automatic_charge: { type: boolean, const: false }
         active: { type: boolean }
         started_at: { $ref: '#/components/schemas/Timestamp' }
+    BranchHoursSlot:
+      type: object
+      additionalProperties: false
+      required: [dias, abre, cierra]
+      properties:
+        dias:
+          type: array
+          minItems: 1
+          maxItems: 7
+          uniqueItems: true
+          items: { type: integer, minimum: 0, maximum: 6 }
+          description: Lunes es 0 y domingo es 6.
+        abre: { type: string, pattern: '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$' }
+        cierra: { type: string, pattern: '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$', description: Si es anterior a abre indica el día siguiente; ambas horas deben ser distintas. }
+    BranchPublicLink:
+      type: string
+      format: uri
+      pattern: '^[Hh][Tt][Tt][Pp][Ss]://'
+      maxLength: 2048
+    BranchPublicProfile:
+      type: object
+      additionalProperties: false
+      description: Información pública opcional, cargada por el comercio para cada sucursal.
+      properties:
+        horarios:
+          type: array
+          maxItems: 28
+          description: Bloques semanales en hora local de la sucursal. No pueden superponerse.
+          items: { $ref: '#/components/schemas/BranchHoursSlot' }
+        enlaces:
+          type: object
+          additionalProperties: false
+          description: Las redes sociales deben usar el dominio de cada plataforma.
+          properties:
+            sitio_web: { $ref: '#/components/schemas/BranchPublicLink' }
+            menu_ingles: { $ref: '#/components/schemas/BranchPublicLink' }
+            instagram: { $ref: '#/components/schemas/BranchPublicLink' }
+            facebook: { $ref: '#/components/schemas/BranchPublicLink' }
+            tiktok: { $ref: '#/components/schemas/BranchPublicLink' }
+            linkedin: { $ref: '#/components/schemas/BranchPublicLink' }
     Branch:
       type: object
       additionalProperties: false
@@ -3664,6 +4182,7 @@ components:
         codigo_postal: { type: string }
         latitud: { type: number, minimum: -90, maximum: 90 }
         longitud: { type: number, minimum: -180, maximum: 180 }
+        perfil_publico: { $ref: '#/components/schemas/BranchPublicProfile' }
         principal: { type: boolean }
         version: { type: integer, minimum: 1 }
         created_at: { $ref: '#/components/schemas/Timestamp' }
@@ -3711,8 +4230,9 @@ components:
     CreateBranchRequest:
       type: object
       required: [nombre]
-      properties: { nombre: { type: string }, direccion: { type: string }, localidad: { type: string }, provincia: { type: string }, codigo_postal: { type: string }, latitud: { type: number }, longitud: { type: number } }
+      properties: { nombre: { type: string }, direccion: { type: string }, localidad: { type: string }, provincia: { type: string }, codigo_postal: { type: string }, latitud: { type: number }, longitud: { type: number }, perfil_publico: { $ref: '#/components/schemas/BranchPublicProfile' } }
     UpdateBranchRequest:
+      description: Omitir perfil_publico conserva el perfil existente; enviar un objeto lo reemplaza y un objeto vacío lo quita de la ficha pública.
       allOf:
         - { $ref: '#/components/schemas/CreateBranchRequest' }
         - type: object
@@ -4376,3 +4896,31 @@ components:
       properties:
         data: { $ref: '#/components/schemas/ReviewEvents' }
         request_id: { type: string }
+
+    AppleChallengeRequest: {"type": "object", "additionalProperties": false, "properties": {"purpose": {"type": "string", "enum": ["login", "link", "reauthenticate"]}}, "required": ["purpose"]}
+
+    AppleChallenge: {"type": "object", "additionalProperties": false, "properties": {"challenge_id": {"type": "string", "format": "uuid"}, "nonce": {"type": "string"}, "expires_at": {"type": "string", "format": "date-time"}}, "required": ["challenge_id", "nonce", "expires_at"]}
+
+    AppleBrowserStartRequest: {"type": "object", "additionalProperties": false, "properties": {"purpose": {"type": "string", "enum": ["login", "reauthenticate"]}, "code_challenge": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}}, "required": ["purpose", "code_challenge"]}
+    AppleBrowserStart: {"type": "object", "additionalProperties": false, "properties": {"flow_id": {"type": "string", "format": "uuid"}, "authorization_url": {"type": "string", "format": "uri"}, "expires_at": {"type": "string", "format": "date-time"}}, "required": ["flow_id", "authorization_url", "expires_at"]}
+    AppleBrowserFinishRequest: {"type": "object", "additionalProperties": false, "properties": {"flow_id": {"type": "string", "format": "uuid"}, "code_verifier": {"type": "string", "pattern": "^[A-Za-z0-9._~-]{43,128}$"}, "version": {"type": "integer", "minimum": 1}}, "required": ["flow_id", "code_verifier"]}
+
+    AppleAuthRequest: {"type": "object", "additionalProperties": false, "properties": {"challenge_id": {"type": "string", "format": "uuid"}, "id_token": {"type": "string"}, "authorization_code": {"type": "string"}, "name": {"type": "string"}, "apellido": {"type": "string"}, "account_type": {"type": "string", "enum": ["CLIENTE_FINAL", "PERSONAL_MARCA"]}, "merchant_registration": {"$ref": "#/components/schemas/GoogleMerchantRegistration"}}, "required": ["challenge_id", "id_token", "authorization_code"]}
+
+    AppleLinkRequest: {"type": "object", "additionalProperties": false, "properties": {"challenge_id": {"type": "string", "format": "uuid"}, "id_token": {"type": "string"}, "authorization_code": {"type": "string"}, "version": {"type": "integer", "minimum": 1}}, "required": ["challenge_id", "id_token", "authorization_code", "version"]}
+
+    BrandBillingState: {"type": "object", "additionalProperties": false, "properties": {"mode": {"type": "string", "enum": ["FREE", "APPLE", "MERCADO_PAGO"]}, "status": {"type": "string"}, "product_id": {"type": "string"}, "program_type": {"type": "string"}, "capacity": {"type": "integer"}, "active_branches": {"type": "integer"}, "covered_until": {"type": "string", "format": "date-time"}, "grace_ends_at": {"type": "string", "format": "date-time"}, "auto_renew": {"type": "boolean"}, "pending_product_id": {"type": "string"}, "restriction": {"type": "string"}, "trial_ends_at": {"type": "string", "format": "date-time"}}, "required": ["mode", "status", "capacity", "active_branches"]}
+
+    AppleProduct: {"type": "object", "additionalProperties": false, "properties": {"product_id": {"type": "string"}, "program_type": {"type": "string", "enum": ["SELLOS", "PUNTOS"]}, "capacity": {"type": "integer", "minimum": 1, "maximum": 10}, "period": {"type": "string", "enum": ["P1M"]}}, "required": ["product_id", "program_type", "capacity", "period"]}
+
+    AppleCatalog: {"type": "object", "additionalProperties": false, "properties": {"enabled": {"type": "boolean"}, "products": {"type": "array", "items": {"$ref": "#/components/schemas/AppleProduct"}}, "trial_ends_at": {"type": "string", "format": "date-time"}, "eligible_to_purchase": {"type": "boolean"}}, "required": ["enabled", "products", "eligible_to_purchase"]}
+
+    ApplePurchaseIntentRequest: {"type": "object", "additionalProperties": false, "properties": {"product_id": {"type": "string"}, "referral_code": {"type": "string"}}, "required": ["product_id"]}
+
+    ApplePurchaseIntent: {"type": "object", "additionalProperties": false, "properties": {"intent_id": {"type": "string", "format": "uuid"}, "app_account_token": {"type": "string", "format": "uuid"}, "product_id": {"type": "string"}, "expires_at": {"type": "string", "format": "date-time"}, "offer": {"type": "object", "additionalProperties": false, "properties": {"offer_id": {"type": "string"}, "code": {"type": "string"}}, "required": ["offer_id"]}}, "required": ["intent_id", "app_account_token", "product_id", "expires_at"]}
+
+    AppleSyncRequest: {"type": "object", "additionalProperties": false, "properties": {"signed_transaction": {"type": "string"}, "intent_id": {"type": "string", "format": "uuid"}, "restore": {"type": "boolean", "default": false, "description": "Sólo restauración deliberada del propietario; permite reconciliar una transacción existente sin intención local. No inicia compras ni sobrescribe cadenas ajenas."}}, "required": ["signed_transaction"]}
+
+    AppleNotificationRequest: {"type": "object", "additionalProperties": false, "properties": {"signedPayload": {"type": "string"}}, "required": ["signedPayload"]}
+
+    AppleProof: { type: object, additionalProperties: false, required: [challenge_id, id_token, authorization_code], properties: { challenge_id: { type: string, format: uuid }, id_token: { type: string }, authorization_code: { type: string } } }

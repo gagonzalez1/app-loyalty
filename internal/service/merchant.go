@@ -40,7 +40,7 @@ func (s *Service) RegisterDemoMerchant(ctx context.Context, key, requestID strin
 	}
 	location := model.BranchRegistrationLocation{
 		BranchAddress: req.BranchAddress, BranchLocality: req.BranchLocality, BranchProvince: req.BranchProvince,
-		BranchPostalCode: req.BranchPostalCode, BranchLatitude: req.BranchLatitude, BranchLongitude: req.BranchLongitude,
+		BranchPostalCode: req.BranchPostalCode, BranchLatitude: req.BranchLatitude, BranchLongitude: req.BranchLongitude, PublicProfile: req.PublicProfile,
 	}
 	if err := cleanRegistrationBranchLocation(&location); err != nil {
 		return repository.IdempotentResult{}, err
@@ -67,7 +67,8 @@ func (s *Service) RegisterDemoMerchant(ctx context.Context, key, requestID strin
 		BranchLatitude                                                   *float64 `json:",omitempty"`
 		BranchLongitude                                                  *float64 `json:",omitempty"`
 		ProgramType, ReferralCode                                        string
-	}{email, req.Password, owner, ownerLastName, brand, branch, location.BranchAddress, location.BranchLocality, location.BranchProvince, location.BranchPostalCode, location.BranchLatitude, location.BranchLongitude, programType, strings.ToUpper(strings.TrimSpace(req.ReferralCode))})
+		PublicProfile                                                    *model.BranchPublicProfile `json:",omitempty"`
+	}{email, req.Password, owner, ownerLastName, brand, branch, location.BranchAddress, location.BranchLocality, location.BranchProvince, location.BranchPostalCode, location.BranchLatitude, location.BranchLongitude, programType, strings.ToUpper(strings.TrimSpace(req.ReferralCode)), location.PublicProfile})
 	if req.VerificationMethod != "" {
 		fingerprint = KeyedFingerprint(s.Config.QRPepper, struct {
 			Registration       []byte
@@ -167,7 +168,7 @@ func cleanRegistrationBranchLocation(location *model.BranchRegistrationLocation)
 	if location.BranchLatitude != nil && (*location.BranchLatitude < -90 || *location.BranchLatitude > 90 || *location.BranchLongitude < -180 || *location.BranchLongitude > 180) {
 		return ErrInvalidRequest
 	}
-	return nil
+	return cleanBranchPublicProfile(location.PublicProfile)
 }
 
 func normalizeProgramType(value string) (string, error) {

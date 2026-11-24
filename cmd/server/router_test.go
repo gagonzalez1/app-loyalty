@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"clientesFrecuentes/internal/auth"
@@ -28,12 +29,19 @@ func TestRouteInventoryAndAuthentication(t *testing.T) {
 		"POST /v1/auth/email-change/confirm",
 		"POST /v1/auth/password-reset/request", "POST /v1/auth/password-reset/confirm",
 		"GET /v1/invitaciones/:token", "POST /v1/invitaciones/:token/registrar",
-		"POST /v1/mercado-pago/webhooks",
+		"POST /v1/mercado-pago/webhooks", "POST /v1/auth/apple", "POST /v1/auth/apple/challenge", "POST /v1/apple/app-store/notifications",
+		"GET /v1/auth/google/browser/config", "POST /v1/auth/google/browser/start", "POST /v1/auth/google/browser/callback", "POST /v1/auth/google/browser/finish",
+		"POST /v1/auth/apple/browser/start", "POST /v1/auth/apple/browser/callback", "POST /v1/auth/apple/browser/finish",
 		"POST /v1/referidos/validacion",
 		"POST /v1/backoffice/login",
 		"POST /auth/register", "POST /auth/login", "POST /auth/google",
 	}
 	protected := []struct{ method, pattern, request string }{
+		{"POST", "/v1/auth/apple/link", "/v1/auth/apple/link"},
+		{"GET", "/v1/marcas/:brand_id/billing", "/v1/marcas/1/billing"},
+		{"GET", "/v1/marcas/:brand_id/billing/apple/catalog", "/v1/marcas/1/billing/apple/catalog"},
+		{"POST", "/v1/marcas/:brand_id/billing/apple/intents", "/v1/marcas/1/billing/apple/intents"},
+		{"POST", "/v1/marcas/:brand_id/billing/apple/sync", "/v1/marcas/1/billing/apple/sync"},
 		{"GET", "/v1/marcas/:brand_id/sucursales/:resource_id/menu", "/v1/marcas/1/sucursales/1/menu"},
 		{"POST", "/v1/marcas/:brand_id/sucursales/:resource_id/menu/documentos", "/v1/marcas/1/sucursales/1/menu/documentos"},
 		{"PUT", "/v1/marcas/:brand_id/sucursales/:resource_id/menu/publicacion", "/v1/marcas/1/sucursales/1/menu/publicacion"},
@@ -41,6 +49,7 @@ func TestRouteInventoryAndAuthentication(t *testing.T) {
 		{"DELETE", "/v1/marcas/:brand_id/sucursales/:resource_id/menu/borrador", "/v1/marcas/1/sucursales/1/menu/borrador"},
 		{"GET", "/v1/backoffice/me", "/v1/backoffice/me"},
 		{"GET", "/v1/backoffice/customers", "/v1/backoffice/customers"},
+		{"GET", "/v1/backoffice/users", "/v1/backoffice/users"},
 		{"GET", "/v1/backoffice/prices", "/v1/backoffice/prices"},
 		{"GET", "/v1/backoffice/prices/:program/preview", "/v1/backoffice/prices/SELLOS/preview?unit_price_minor=2500000"},
 		{"PUT", "/v1/backoffice/prices/:program", "/v1/backoffice/prices/SELLOS"},
@@ -185,7 +194,7 @@ func TestBackofficeRejectsCustomerAndMerchantAppTokens(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, route := range []string{"/v1/backoffice/me", "/v1/backoffice/customers", "/v1/backoffice/campaigns", "/v1/backoffice/brands/1/credit-allocations"} {
+		for _, route := range []string{"/v1/backoffice/users", "/v1/backoffice/me", "/v1/backoffice/customers", "/v1/backoffice/campaigns", "/v1/backoffice/brands/1/credit-allocations"} {
 			request := httptest.NewRequest(http.MethodGet, route, nil)
 			request.Header.Set("Authorization", "Bearer "+token)
 			response := httptest.NewRecorder()
@@ -193,6 +202,31 @@ func TestBackofficeRejectsCustomerAndMerchantAppTokens(t *testing.T) {
 			if response.Code != http.StatusUnauthorized {
 				t.Fatalf("%s on %s: expected 401, got %d", accountType, route, response.Code)
 			}
+		}
+	}
+}
+
+func TestBrowserCallbacksAllowProviderFormsWithoutExtendingCORS(t *testing.T) {
+	t.Setenv("CORS_ORIGINS", "https://testing.puntazo.test")
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	h := &handler.Handler{Service: &service.Service{}, Limiter: middleware.NewRateLimiter(), Logger: logger}
+	r := newRouter(h, auth.NewTokens("01234567890123456789012345678901", "puntazo"), logger)
+	for _, tc := range []struct {
+		path, origin string
+		status       int
+	}{
+		{"/v1/auth/google/browser/callback", "https://accounts.google.com", http.StatusServiceUnavailable},
+		{"/v1/auth/google/browser/finish", "https://accounts.google.com", http.StatusForbidden},
+		{"/v1/auth/apple/browser/callback", "https://appleid.apple.com", http.StatusServiceUnavailable},
+		{"/v1/auth/apple/browser/finish", "https://appleid.apple.com", http.StatusForbidden},
+	} {
+		req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader("state=00000000-0000-4000-8000-000000000001"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Origin", tc.origin)
+		res := httptest.NewRecorder()
+		r.ServeHTTP(res, req)
+		if res.Code != tc.status || res.Header().Get("Access-Control-Allow-Origin") != "" {
+			t.Fatalf("%s: status %d; headers %v", tc.path, res.Code, res.Header())
 		}
 	}
 }

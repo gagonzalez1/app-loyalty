@@ -17,7 +17,15 @@ import (
 func newRouter(h *handler.Handler, tokens *auth.Tokens, logger *slog.Logger) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
-	r.Use(middleware.RequestContext(logger), middleware.Recovery(logger), middleware.CORS(), func(c *gin.Context) {
+	cors := middleware.CORS()
+	r.Use(middleware.RequestContext(logger), middleware.Recovery(logger), func(c *gin.Context) {
+		// Identity providers post forms across origins. These callbacks never
+		// grant a session and need no CORS permission for form navigation.
+		path := c.Request.URL.Path
+		if c.Request.Method != http.MethodPost || (path != "/v1/auth/google/browser/callback" && path != "/v1/auth/apple/browser/callback") {
+			cors(c)
+		}
+	}, func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store, private")
 		c.Header("Pragma", "no-cache")
 		c.Request = c.Request.WithContext(challenge.WithReceipt(c.Request.Context(), c.GetHeader("X-Captcha-Token")))
@@ -45,6 +53,7 @@ func newRouter(h *handler.Handler, tokens *auth.Tokens, logger *slog.Logger) *gi
 	backofficeAuthorized.Use(h.RequireBackoffice)
 	backofficeAuthorized.GET("/me", h.BackofficeMe)
 	backofficeAuthorized.GET("/customers", h.BackofficeCustomers)
+	backofficeAuthorized.GET("/users", h.BackofficeRegisteredUsers)
 	backofficeAuthorized.GET("/prices", h.SubscriptionPrices)
 	backofficeAuthorized.GET("/prices/:program/preview", h.BackofficePricePreview)
 	backofficeAuthorized.PUT("/prices/:program", h.BackofficeChangePrice)
@@ -80,8 +89,10 @@ func newRouter(h *handler.Handler, tokens *auth.Tokens, logger *slog.Logger) *gi
 	authenticated.GET("/me/export", h.ExportMe)
 	authenticated.DELETE("/me", h.DeleteMe)
 	authenticated.POST("/auth/google/link", h.LinkGoogle)
+	authenticated.POST("/auth/apple/link", h.LinkApple)
 	authenticated.POST("/auth/reauthenticate", h.Reauthenticate)
 	authenticated.Use(h.RequireAdult)
+	authenticated.Use(h.RequireAppleBillingWrite)
 	registerMerchantRoutes(authenticated, h)
 	registerCustomerRoutes(authenticated, h)
 	registerMovementRoutes(authenticated, h)

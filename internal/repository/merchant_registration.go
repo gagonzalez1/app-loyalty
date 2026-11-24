@@ -74,7 +74,7 @@ func createMerchantResources(ctx context.Context, tx pgx.Tx, userID int64, brand
 	if err := tx.QueryRow(ctx, `INSERT INTO membresias_marca(usuario_id,marca_id,rol) VALUES($1,$2,'PROPIETARIO') RETURNING id`, userID, brandID).Scan(&membershipID); err != nil {
 		return model.MerchantContext{}, err
 	}
-	if err := tx.QueryRow(ctx, `INSERT INTO sucursales(marca_id,nombre,direccion,localidad,provincia,codigo_postal,latitud,longitud,principal) VALUES($1,$2,$3,$4,$5,$6,$7,$8,true) RETURNING id`, brandID, branchName, location.BranchAddress, location.BranchLocality, location.BranchProvince, location.BranchPostalCode, location.BranchLatitude, location.BranchLongitude).Scan(&branchID); err != nil {
+	if err := tx.QueryRow(ctx, `INSERT INTO sucursales(marca_id,nombre,direccion,localidad,provincia,codigo_postal,latitud,longitud,principal,perfil_publico) VALUES($1,$2,$3,$4,$5,$6,$7,$8,true,NULLIF($9::jsonb,'null'::jsonb)) RETURNING id`, brandID, branchName, location.BranchAddress, location.BranchLocality, location.BranchProvince, location.BranchPostalCode, location.BranchLatitude, location.BranchLongitude, location.PublicProfile).Scan(&branchID); err != nil {
 		return model.MerchantContext{}, err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO membresias_sucursales(membresia_id,sucursal_id,marca_id) VALUES($1,$2,$3)`, membershipID, branchID, brandID); err != nil {
@@ -98,7 +98,7 @@ func createMerchantResources(ctx context.Context, tx pgx.Tx, userID int64, brand
 	}
 	return model.MerchantContext{
 		BrandID: brandID, BrandName: brandName, Timezone: "America/Argentina/Buenos_Aires", BrandVersion: 1, Role: "PROPIETARIO",
-		Branch:     model.Branch{ID: branchID, BrandID: brandID, Name: branchName, Address: location.BranchAddress, Locality: location.BranchLocality, Province: location.BranchProvince, PostalCode: location.BranchPostalCode, Latitude: location.BranchLatitude, Longitude: location.BranchLongitude, Active: true, Primary: true, Version: 1},
+		Branch:     model.Branch{ID: branchID, BrandID: brandID, Name: branchName, Address: location.BranchAddress, Locality: location.BranchLocality, Province: location.BranchProvince, PostalCode: location.BranchPostalCode, Latitude: location.BranchLatitude, Longitude: location.BranchLongitude, PublicProfile: location.PublicProfile, Active: true, Primary: true, Version: 1},
 		Program:    model.Program{ID: programID, BrandID: brandID, Type: programType, StampsPerAccumulation: stampsPerAccumulation, Active: true, UnitName: unitName, Version: 1},
 		Benefits:   []model.Benefit{},
 		DemoAccess: model.DemoAccess{Kind: demoKind, PriceMinor: 0, Currency: "ARS", AutomaticCharge: false, Active: true, StartedAt: started},

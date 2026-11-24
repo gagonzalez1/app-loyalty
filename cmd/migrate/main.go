@@ -18,8 +18,8 @@ import (
 
 func main() {
 	_ = godotenv.Load()
-	if len(os.Args) != 2 || (os.Args[1] != "up" && os.Args[1] != "down") {
-		fatal("usage: migrate up|down")
+	if len(os.Args) != 2 || (os.Args[1] != "up" && os.Args[1] != "down" && os.Args[1] != "reconcile-testing-apple-0045") {
+		fatal("usage: migrate up|down|reconcile-testing-apple-0045")
 	}
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
@@ -36,7 +36,12 @@ func main() {
 		fatal(err.Error())
 	}
 	defer pool.Close()
-	if err = run(ctx, pool, os.Args[1], envDefault("MIGRATIONS_DIR", "migrations")); err != nil {
+	if os.Args[1] == "reconcile-testing-apple-0045" {
+		err = reconcileTestingApple0045(ctx, pool, os.Getenv("APP_ENV"))
+	} else {
+		err = run(ctx, pool, os.Args[1], envDefault("MIGRATIONS_DIR", "migrations"))
+	}
+	if err != nil {
 		fatal(err.Error())
 	}
 }
@@ -78,7 +83,7 @@ func run(ctx context.Context, pool *pgxpool.Pool, direction, dir string) error {
 			return fmt.Errorf("down migration requires ALLOW_MIGRATION_DOWN=true")
 		}
 		var version string
-		if err = conn.QueryRow(ctx, `SELECT version FROM schema_migrations ORDER BY applied_at DESC LIMIT 1`).Scan(&version); err != nil {
+		if err = conn.QueryRow(ctx, `SELECT version FROM schema_migrations ORDER BY applied_at DESC, version DESC LIMIT 1`).Scan(&version); err != nil {
 			return err
 		}
 		found := false

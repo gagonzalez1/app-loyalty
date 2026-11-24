@@ -277,7 +277,7 @@ func (r *Repository) ReconcileBranch(ctx context.Context, id string, provider Br
 					return e
 				}
 				var branch model.Branch
-				e = scanBranch(tx.QueryRow(ctx, `INSERT INTO sucursales(marca_id,nombre,direccion,localidad,provincia,codigo_postal,latitud,longitud) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,marca_id,nombre,direccion,activo,localidad,provincia,codigo_postal,latitud,longitud,principal,version,created_at,updated_at`, brand, draft.Name, draft.Address, draft.Locality, draft.Province, draft.PostalCode, draft.Latitude, draft.Longitude), &branch)
+				e = scanBranch(tx.QueryRow(ctx, `INSERT INTO sucursales(marca_id,nombre,direccion,localidad,provincia,codigo_postal,latitud,longitud,perfil_publico) VALUES($1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9::jsonb,'null'::jsonb)) RETURNING id,marca_id,nombre,direccion,activo,localidad,provincia,codigo_postal,latitud,longitud,principal,version,created_at,updated_at,perfil_publico`, brand, draft.Name, draft.Address, draft.Locality, draft.Province, draft.PostalCode, draft.Latitude, draft.Longitude, draft.PublicProfile), &branch)
 				if e != nil {
 					return e
 				}

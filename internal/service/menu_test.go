@@ -18,7 +18,7 @@ func TestMenuPDFValidation(t *testing.T) {
 		name  string
 		pages int
 		err   error
-	}{{"menu.pdf", 1, nil}, {"menu-30.pdf", 30, nil}, {"menu-31.pdf", 0, ErrMenuPDFPages}, {"menu-scanned.pdf", 1, nil}, {"menu-protected-pypdf.pdf", 0, ErrMenuPDFPassword}} {
+	}{{"menu.pdf", 1, nil}, {"menu-30.pdf", 30, nil}, {"menu-31.pdf", 31, nil}, {"menu-scanned.pdf", 1, nil}, {"menu-protected-pypdf.pdf", 0, ErrMenuPDFPassword}} {
 		t.Run(tt.name, func(t *testing.T) {
 			body, err := os.ReadFile("testdata/" + tt.name)
 			if err != nil {
@@ -77,6 +77,35 @@ func TestMenuPDFValidation(t *testing.T) {
 		t.Fatal("cancelled parser succeeded")
 	}
 }
+func TestMenuPDFAcceptsUnwrappedRDFMetadata(t *testing.T) {
+	// Some PDF exporters emit RDF directly instead of wrapping it in x:xmpmeta.
+	metadata := `<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description rdf:about=""/></rdf:RDF>`
+	objects := []string{
+		"<< /Type /Catalog /Pages 2 0 R /Metadata 4 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] /Resources << >> >>",
+		fmt.Sprintf("<< /Type /Metadata /Subtype /XML /Length %d >>\nstream\n%s\nendstream", len(metadata), metadata),
+	}
+	var pdf bytes.Buffer
+	pdf.WriteString("%PDF-1.4\n")
+	offsets := make([]int, 0, len(objects))
+	for i, object := range objects {
+		offsets = append(offsets, pdf.Len())
+		fmt.Fprintf(&pdf, "%d 0 obj\n%s\nendobj\n", i+1, object)
+	}
+	xref := pdf.Len()
+	fmt.Fprintf(&pdf, "xref\n0 %d\n0000000000 65535 f \n", len(objects)+1)
+	for _, offset := range offsets {
+		fmt.Fprintf(&pdf, "%010d 00000 n \n", offset)
+	}
+	fmt.Fprintf(&pdf, "trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(objects)+1, xref)
+
+	pages, sum, err := validateMenuPDF(t.Context(), pdf.Bytes())
+	if err != nil || pages != 1 || len(sum) != 32 {
+		t.Fatalf("RDF metadata PDF: pages=%d hash size=%d err=%v", pages, len(sum), err)
+	}
+}
+
 func TestMenuFileNameSanitization(t *testing.T) {
 	for _, tt := range []struct{ in, want string }{{"../../menu.pdf", "menu.pdf"}, {`C:\fakepath\carta.pdf`, "carta.pdf"}, {"\x00\n.pdf", "menu.pdf"}, {"carta", "carta.pdf"}, {"Café.pdf", "Café.pdf"}} {
 		if got := menuFileName(tt.in); got != tt.want {

@@ -64,10 +64,10 @@ func readMenuDocument(ctx context.Context, tx pgx.Tx, id string) (*model.MenuDoc
 	}
 	return &d, nil
 }
-func readMenuState(ctx context.Context, tx pgx.Tx, brand, branch int64) (model.BranchMenuState, error) {
+func readMenuState(ctx context.Context, tx pgx.Tx, brand, branch int64, language model.MenuLanguage) (model.BranchMenuState, error) {
 	out := model.BranchMenuState{BrandID: brand, BranchID: branch, Version: 1}
 	var draft, published *string
-	err := tx.QueryRow(ctx, `SELECT version,draft_document_id::text,published_document_id::text FROM branch_menus WHERE sucursal_id=$1 AND marca_id=$2`, branch, brand).Scan(&out.Version, &draft, &published)
+	err := tx.QueryRow(ctx, `SELECT version,draft_document_id::text,published_document_id::text FROM branch_menus WHERE sucursal_id=$1 AND marca_id=$2 AND language=$3`, branch, brand, language).Scan(&out.Version, &draft, &published)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return out, nil
 	}
@@ -88,8 +88,8 @@ func readMenuState(ctx context.Context, tx pgx.Tx, brand, branch int64) (model.B
 	}
 	return out, nil
 }
-func finishMenu(ctx context.Context, tx pgx.Tx, brand, branch int64, sign MenuStateSigner) (model.BranchMenuState, error) {
-	out, err := readMenuState(ctx, tx, brand, branch)
+func finishMenu(ctx context.Context, tx pgx.Tx, brand, branch int64, language model.MenuLanguage, sign MenuStateSigner) (model.BranchMenuState, error) {
+	out, err := readMenuState(ctx, tx, brand, branch, language)
 	if err != nil {
 		return out, err
 	}
@@ -104,7 +104,7 @@ func finishMenu(ctx context.Context, tx pgx.Tx, brand, branch int64, sign MenuSt
 	}
 	return out, nil
 }
-func (r *Repository) BranchMenu(ctx context.Context, actor, brand, branch int64, sign MenuStateSigner) (model.BranchMenuState, error) {
+func (r *Repository) BranchMenu(ctx context.Context, actor, brand, branch int64, language model.MenuLanguage, sign MenuStateSigner) (model.BranchMenuState, error) {
 	tx, err := r.Pool.Begin(ctx)
 	if err != nil {
 		return model.BranchMenuState{}, err
@@ -113,9 +113,9 @@ func (r *Repository) BranchMenu(ctx context.Context, actor, brand, branch int64,
 	if err = r.lockMenu(ctx, tx, actor, brand, branch, false); err != nil {
 		return model.BranchMenuState{}, err
 	}
-	return finishMenu(ctx, tx, brand, branch, sign)
+	return finishMenu(ctx, tx, brand, branch, language, sign)
 }
-func (r *Repository) ReserveMenuDocument(ctx context.Context, actor, brand, branch int64, version int, d model.MenuDocument, digest []byte) error {
+func (r *Repository) ReserveMenuDocument(ctx context.Context, actor, brand, branch int64, language model.MenuLanguage, version int, d model.MenuDocument, digest []byte) error {
 	tx, err := r.Pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -124,14 +124,14 @@ func (r *Repository) ReserveMenuDocument(ctx context.Context, actor, brand, bran
 	if err = r.lockMenu(ctx, tx, actor, brand, branch, true); err != nil {
 		return err
 	}
-	state, err := readMenuState(ctx, tx, brand, branch)
+	state, err := readMenuState(ctx, tx, brand, branch, language)
 	if err != nil {
 		return err
 	}
 	if state.Version != version {
 		return ErrPreconditionFailed
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO branch_menu_documents(id,marca_id,sucursal_id,file_name,byte_size,page_count,sha256,object_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, d.ID, brand, branch, d.FileName, d.ByteSize, d.PageCount, digest, d.ObjectKey)
+	_, err = tx.Exec(ctx, `INSERT INTO branch_menu_documents(id,marca_id,sucursal_id,file_name,byte_size,page_count,sha256,object_key,language) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, d.ID, brand, branch, d.FileName, d.ByteSize, d.PageCount, digest, d.ObjectKey, language)
 	if err != nil {
 		return err
 	}
@@ -144,7 +144,7 @@ func retireMenuDocument(ctx context.Context, tx pgx.Tx, id string) error {
 
 // The reserved immutable upload remains detached until storage succeeds. A stale
 // version or signing failure rolls this transaction back, keeping the old PDF.
-func (r *Repository) ActivateMenuDraft(ctx context.Context, actor, brand, branch int64, version int, document string, sign MenuStateSigner) (model.BranchMenuState, error) {
+func (r *Repository) ActivateMenuDraft(ctx context.Context, actor, brand, branch int64, language model.MenuLanguage, version int, document string, sign MenuStateSigner) (model.BranchMenuState, error) {
 	tx, err := r.Pool.Begin(ctx)
 	if err != nil {
 		return model.BranchMenuState{}, err
@@ -153,21 +153,21 @@ func (r *Repository) ActivateMenuDraft(ctx context.Context, actor, brand, branch
 	if err = r.lockMenu(ctx, tx, actor, brand, branch, true); err != nil {
 		return model.BranchMenuState{}, err
 	}
-	state, err := readMenuState(ctx, tx, brand, branch)
+	state, err := readMenuState(ctx, tx, brand, branch, language)
 	if err != nil {
 		return state, err
 	}
 	if state.Version != version {
 		return state, ErrPreconditionFailed
 	}
-	tag, err := tx.Exec(ctx, `UPDATE branch_menu_documents SET estado='READY' WHERE id=$1 AND marca_id=$2 AND sucursal_id=$3 AND estado='UPLOAD_PENDING' AND lease_owner IS NULL`, document, brand, branch)
+	tag, err := tx.Exec(ctx, `UPDATE branch_menu_documents SET estado='READY' WHERE id=$1 AND marca_id=$2 AND sucursal_id=$3 AND estado='UPLOAD_PENDING' AND lease_owner IS NULL AND language=$4`, document, brand, branch, language)
 	if err != nil {
 		return state, err
 	}
 	if tag.RowsAffected() != 1 {
 		return state, ErrNotFound
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO branch_menus(sucursal_id,marca_id,version,draft_document_id) VALUES($1,$2,2,$3) ON CONFLICT(sucursal_id) DO UPDATE SET draft_document_id=$3,version=branch_menus.version+1,updated_at=now()`, branch, brand, document)
+	_, err = tx.Exec(ctx, `INSERT INTO branch_menus(sucursal_id,marca_id,version,draft_document_id,language) VALUES($1,$2,2,$3,$4) ON CONFLICT(sucursal_id,language) DO UPDATE SET draft_document_id=$3,version=branch_menus.version+1,updated_at=now()`, branch, brand, document, language)
 	if err != nil {
 		return state, err
 	}
@@ -176,9 +176,9 @@ func (r *Repository) ActivateMenuDraft(ctx context.Context, actor, brand, branch
 			return state, err
 		}
 	}
-	return finishMenu(ctx, tx, brand, branch, sign)
+	return finishMenu(ctx, tx, brand, branch, language, sign)
 }
-func (r *Repository) ChangeMenuPublication(ctx context.Context, actor, brand, branch int64, version int, action, document string, sign MenuStateSigner) (model.BranchMenuState, error) {
+func (r *Repository) ChangeMenuPublication(ctx context.Context, actor, brand, branch int64, language model.MenuLanguage, version int, action, document string, sign MenuStateSigner) (model.BranchMenuState, error) {
 	tx, err := r.Pool.Begin(ctx)
 	if err != nil {
 		return model.BranchMenuState{}, err
@@ -187,7 +187,7 @@ func (r *Repository) ChangeMenuPublication(ctx context.Context, actor, brand, br
 	if err = r.lockMenu(ctx, tx, actor, brand, branch, true); err != nil {
 		return model.BranchMenuState{}, err
 	}
-	state, err := readMenuState(ctx, tx, brand, branch)
+	state, err := readMenuState(ctx, tx, brand, branch, language)
 	if err != nil {
 		return state, err
 	}
@@ -198,25 +198,25 @@ func (r *Repository) ChangeMenuPublication(ctx context.Context, actor, brand, br
 	switch action {
 	case "publish":
 		if state.Published != nil && state.Published.ID == document {
-			return finishMenu(ctx, tx, brand, branch, sign)
+			return finishMenu(ctx, tx, brand, branch, language, sign)
 		}
 		if state.Draft == nil || state.Draft.ID != document {
 			return state, ErrNotFound
 		}
 		retired = state.Published
-		_, err = tx.Exec(ctx, `UPDATE branch_menus SET published_document_id=draft_document_id,draft_document_id=NULL,version=version+1,updated_at=now() WHERE sucursal_id=$1`, branch)
+		_, err = tx.Exec(ctx, `UPDATE branch_menus SET published_document_id=draft_document_id,draft_document_id=NULL,version=version+1,updated_at=now() WHERE sucursal_id=$1 AND language=$2`, branch, language)
 	case "unpublish":
 		if state.Published == nil {
-			return finishMenu(ctx, tx, brand, branch, sign)
+			return finishMenu(ctx, tx, brand, branch, language, sign)
 		}
 		retired = state.Published
-		_, err = tx.Exec(ctx, `UPDATE branch_menus SET published_document_id=NULL,version=version+1,updated_at=now() WHERE sucursal_id=$1`, branch)
+		_, err = tx.Exec(ctx, `UPDATE branch_menus SET published_document_id=NULL,version=version+1,updated_at=now() WHERE sucursal_id=$1 AND language=$2`, branch, language)
 	case "discard":
 		if state.Draft == nil {
-			return finishMenu(ctx, tx, brand, branch, sign)
+			return finishMenu(ctx, tx, brand, branch, language, sign)
 		}
 		retired = state.Draft
-		_, err = tx.Exec(ctx, `UPDATE branch_menus SET draft_document_id=NULL,version=version+1,updated_at=now() WHERE sucursal_id=$1`, branch)
+		_, err = tx.Exec(ctx, `UPDATE branch_menus SET draft_document_id=NULL,version=version+1,updated_at=now() WHERE sucursal_id=$1 AND language=$2`, branch, language)
 	default:
 		return state, ErrInvalidRequest
 	}
@@ -228,7 +228,7 @@ func (r *Repository) ChangeMenuPublication(ctx context.Context, actor, brand, br
 			return state, err
 		}
 	}
-	return finishMenu(ctx, tx, brand, branch, sign)
+	return finishMenu(ctx, tx, brand, branch, language, sign)
 }
 
 // Only detached pending uploads can be compensated. PostgreSQL rechecks the
@@ -238,7 +238,7 @@ func (r *Repository) FailMenuUpload(ctx context.Context, id string) error {
 	return err
 }
 
-func (r *Repository) PublicBranchMenu(ctx context.Context, branch int64, sign func(context.Context, *model.MenuDocument) error) (model.PublicBranchMenu, error) {
+func (r *Repository) PublicBranchMenu(ctx context.Context, branch int64, language model.MenuLanguage, sign func(context.Context, *model.MenuDocument) error) (model.PublicBranchMenu, error) {
 	tx, err := r.Pool.Begin(ctx)
 	if err != nil {
 		return model.PublicBranchMenu{}, err
@@ -260,7 +260,7 @@ func (r *Repository) PublicBranchMenu(ctx context.Context, branch int64, sign fu
 		return out, menuNotFound(err)
 	}
 	var published *string
-	err = tx.QueryRow(ctx, `SELECT published_document_id::text FROM branch_menus WHERE sucursal_id=$1 AND marca_id=$2 FOR SHARE`, branch, out.BrandID).Scan(&published)
+	err = tx.QueryRow(ctx, `SELECT published_document_id::text FROM branch_menus WHERE sucursal_id=$1 AND marca_id=$2 AND language=$3 FOR SHARE`, branch, out.BrandID, language).Scan(&published)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return out, err
 	}
@@ -286,7 +286,7 @@ func (r *Repository) PublicBrandMenus(ctx context.Context, brand int64) ([]model
 	if err != nil {
 		return nil, menuNotFound(err)
 	}
-	rows, err := r.Pool.Query(ctx, `SELECT s.id,s.nombre,s.direccion,CASE WHEN s.latitud BETWEEN -90 AND 90 AND s.longitud BETWEEN -180 AND 180 THEN s.latitud END,CASE WHEN s.latitud BETWEEN -90 AND 90 AND s.longitud BETWEEN -180 AND 180 THEN s.longitud END,EXISTS(SELECT 1 FROM branch_menus b JOIN branch_menu_documents d ON d.id=b.published_document_id AND d.estado='READY' WHERE b.sucursal_id=s.id) FROM sucursales s JOIN marcas m ON m.id=s.marca_id AND m.activo AND m.deleted_at IS NULL WHERE s.marca_id=$1 AND s.activo AND s.deleted_at IS NULL ORDER BY lower(s.nombre),s.id`, brand)
+	rows, err := r.Pool.Query(ctx, `SELECT s.id,s.nombre,s.direccion,CASE WHEN s.latitud BETWEEN -90 AND 90 AND s.longitud BETWEEN -180 AND 180 THEN s.latitud END,CASE WHEN s.latitud BETWEEN -90 AND 90 AND s.longitud BETWEEN -180 AND 180 THEN s.longitud END,EXISTS(SELECT 1 FROM branch_menus b JOIN branch_menu_documents d ON d.id=b.published_document_id AND d.estado='READY' WHERE b.sucursal_id=s.id AND b.language='es') FROM sucursales s JOIN marcas m ON m.id=s.marca_id AND m.activo AND m.deleted_at IS NULL WHERE s.marca_id=$1 AND s.activo AND s.deleted_at IS NULL ORDER BY lower(s.nombre),s.id`, brand)
 	if err != nil {
 		return nil, err
 	}

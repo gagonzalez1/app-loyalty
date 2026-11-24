@@ -198,3 +198,99 @@ los logos y agrega cobertura de permisos, búsqueda y concurrencia; las
 implementaciones anteriores del mapa se consolidan en los archivos `store.go`.
 Las referencias anteriores a tablas inertes o dependencias aún abiertas
 describen el estado histórico de la propuesta.
+
+## Perfil público de sucursales (`0046`)
+
+`0046_branch_public_profile` agrega un perfil público opcional a cada sucursal.
+No modifica filas existentes ni completa horarios o enlaces automáticamente.
+
+### 0047 · Cantidad de páginas del menú PDF
+
+Quita el máximo de páginas y conserva el requisito de al menos una página.
+El límite de 30 MiB sigue aplicando. El DOWN falla si hay documentos con más
+de 30 páginas, sin borrar ni truncar documentos.
+
+### 0048 · Menús PDF por idioma
+
+Los menús y borradores existentes pasan a ser los de español. Cada sucursal
+puede publicar un segundo PDF en inglés con versión y ciclo independientes.
+El DOWN rechaza registros en inglés para proteger sus archivos y publicaciones.
+
+
+### 0049 · Acceso web con Google mediante redirección
+
+Agrega una tabla independiente para intentos de cinco minutos con nonce y
+verificador en hash. El retorno guarda la credencial con cifrado autenticado
+y el canje la borra al consumirla. El proceso de retención elimina intentos
+vencidos. La reversión elimina sólo esta tabla y caduca los intentos abiertos.
+
+### 0050 · Inicio con Apple por navegador
+
+Agrega intentos de cinco minutos y credenciales revocables por cliente de
+Apple. En la rama propietaria 0045 corresponde a StoreKit. Para suspender
+nuevas autorizaciones, usar `APPLE_BROWSER_AUTH_ENABLED=false` y conservar
+el esquema, los identificadores y la clave de Apple para las revocaciones.
+
+El candidato de testing aplicó el esquema de Apple por navegador con el
+número 0045. Antes de promover esta rama a esa base, reconciliar ese
+historial y verificar las tablas de StoreKit en una restauración aislada.
+La migración 0050 rechaza ese historial divergente para evitar que el
+registro de versiones dé por aplicados cambios que faltan.
+
+### 0051 · Auditoría y reconciliación de Apple 0045 en testing
+
+`0051_schema_reconciliation_log` crea una auditoría operativa sin datos personales.
+El camino oficial desde 0044 sigue siendo `migrate up`: aplica StoreKit en 0045,
+Apple por navegador en 0050 y la auditoría vacía en 0051. Los SQL 0001–0050
+permanecen intactos.
+
+La base de testing con Apple por navegador aplicado como 0045 y versiones hasta
+0049 necesita el comando explícito:
+
+```sh
+APP_ENV=testing puntazo-migrate reconcile-testing-apple-0045
+```
+
+Antes de ejecutarlo sobre un entorno, detener los escritores durante la ventana
+de mantenimiento, obtener un backup cifrado/verificado y ensayar su restauración
+con el mismo binario y los mismos permisos. Seleccionar la rama remota vigente y
+fuente limpia, comprobar su CI y conservar una imagen de recuperación compatible
+con 0051. El comando no crea un backup ni publica la API. `DATABASE_URL` se toma
+del entorno protegido; nunca escribir sus credenciales en la línea de comandos.
+
+El comando sólo admite el historial completo 0001–0049 de esa variante, sin
+objetos de facturación, o el resultado 0051 con su auditoría coincidente. Usa el
+mismo advisory lock del migrador, bloqueos de tabla con timeout de cinco segundos
+y una única transacción. Construye una referencia con el SQL 0050 embebido y
+compara columnas, defaults, CHECK, FK, índices, RLS, triggers y herencia antes de
+adoptar las dos tablas existentes. Cualquier diferencia aborta sin cambios.
+
+Después ejecuta el DDL de StoreKit faltante y 0051, registra 0050 como
+`adopt_existing` con su SHA-256 y los DDL ejecutados como `apply`. Conserva todas
+las filas/versiones/fechas originales de `schema_migrations`, incluido 0045, y
+copia ese historial en `schema_reconciliation_log`. Sólo agrega 0050/0051. No
+renumera 0045, no recrea las tablas de navegador ni modifica sus filas, identidades
+o credenciales cifradas. Una segunda ejecución verifica la auditoría y no cambia
+fechas ni datos. El migrador normal sigue rechazando la variante sin reconciliar.
+
+Tras el ensayo, aplicar el procedimiento al ambiente autorizado y publicar la
+API con `EXPECTED_SCHEMA_VERSION=0051`. Readiness exige el manifiesto completo.
+Para recuperar la aplicación, conservar esquema/auditoría y usar la imagen
+ensayada con 0051; no ejecutar DOWN ni restaurar datos personales dados de baja.
+El DOWN de 0051 rechaza una auditoría poblada para conservar su procedencia.
+
+Esta herramienta no convierte los SQL históricos de testing en los de main:
+la diferencia de origen queda registrada explícitamente. Los futuros controles
+de hashes del entorno deben consumir y conservar esa auditoría; nunca sustituir
+silenciosamente el hash original de 0045 por el de StoreKit.
+
+### 0052 · Gift Cards de un solo uso
+
+Agrega lotes de Gift Cards y códigos individuales con tokens almacenados como
+hash SHA-256. Cada lote puede emitir hasta 100 códigos visualmente equivalentes,
+pero cada QR es único y sólo puede canjearse una vez. El canje bloquea el código,
+acredita puntos o sellos y registra el movimiento en una única transacción.
+
+Aplicar después de la reconciliación 0051 y publicar la API con
+`EXPECTED_SCHEMA_VERSION=0052`. El DOWN elimina las tablas de Gift Cards y sólo
+debe utilizarse cuando no sea necesario conservar lotes, códigos ni canjes.

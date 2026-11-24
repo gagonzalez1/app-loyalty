@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM golang:1.26.10-alpine AS build
+FROM golang:1.26.11-alpine AS build
 
 WORKDIR /src
 
@@ -24,6 +24,7 @@ FROM runtime AS migrate
 
 COPY --from=build /out/puntazo-migrate /usr/local/bin/puntazo-migrate
 COPY migrations /migrations
+RUN chmod 0755 /migrations && chmod 0644 /migrations/*.sql
 
 ENV MIGRATIONS_DIR=/migrations
 USER app
@@ -36,6 +37,7 @@ COPY --from=build /out/puntazo-api /usr/local/bin/puntazo-api
 COPY --from=build /out/puntazo-deletion-journal /usr/local/bin/puntazo-deletion-journal
 COPY --from=build /out/puntazo-migrate /usr/local/bin/puntazo-migrate
 COPY migrations /migrations
+RUN chmod 0755 /migrations && chmod 0644 /migrations/*.sql
 
 ENV MIGRATIONS_DIR=/migrations
 USER app

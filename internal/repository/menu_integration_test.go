@@ -101,7 +101,7 @@ func menuFixture(t *testing.T) (*pgxpool.Pool, *repository.Repository, *service.
 }
 func uploadMenu(t *testing.T, s *service.Service, f reviewFixture, v int) model.BranchMenuState {
 	t.Helper()
-	out, err := s.UploadMenuDocument(t.Context(), f.owner, f.brand, f.branch, v, "../../Carta.pdf", menuPDF(t))
+	out, err := s.UploadMenuDocument(t.Context(), f.owner, f.brand, f.branch, model.MenuSpanish, v, "../../Carta.pdf", menuPDF(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func uploadMenu(t *testing.T, s *service.Service, f reviewFixture, v int) model.
 func TestPostgresBranchPDFMenuLifecycle(t *testing.T) {
 	p, repo, svc, store, f := menuFixture(t)
 	ctx := t.Context()
-	initial, err := svc.BranchMenu(ctx, f.owner, f.brand, f.branch)
+	initial, err := svc.BranchMenu(ctx, f.owner, f.brand, f.branch, model.MenuSpanish)
 	if err != nil || initial.Version != 1 || initial.Draft != nil || initial.Published != nil {
 		t.Fatalf("initial=%+v err=%v", initial, err)
 	}
@@ -120,24 +120,28 @@ func TestPostgresBranchPDFMenuLifecycle(t *testing.T) {
 		t.Fatalf("GET wrote rows=%d err=%v", rows, err)
 	}
 	for _, actor := range []int64{f.operator, f.customer} {
-		if _, err = svc.BranchMenu(ctx, actor, f.brand, f.branch); err == nil {
+		if _, err = svc.BranchMenu(ctx, actor, f.brand, f.branch, model.MenuSpanish); err == nil {
 			t.Fatal("unauthorized private GET")
 		}
 	}
-	if _, err = svc.BranchMenu(ctx, f.owner, f.brand+999, f.branch); !errors.Is(err, repository.ErrNotFound) {
+	if _, err = svc.BranchMenu(ctx, f.owner, f.brand+999, f.branch, model.MenuSpanish); !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("tenant mismatch=%v", err)
 	}
 	draft := uploadMenu(t, svc, f, 1)
 	if draft.Version != 2 || draft.Draft == nil || draft.Published != nil || draft.Draft.FileName != "Carta.pdf" || draft.Draft.PageCount != 1 {
 		t.Fatalf("draft=%+v", draft)
 	}
-	public, err := svc.PublicBranchMenu(ctx, f.branch)
+	public, err := svc.PublicBranchMenu(ctx, f.branch, model.MenuSpanish)
 	if err != nil || public.Published != nil {
 		t.Fatalf("draft leaked=%+v err=%v", public, err)
 	}
-	published, err := svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, 2, "publish", draft.Draft.ID)
+	published, err := svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, model.MenuSpanish, 2, "publish", draft.Draft.ID)
 	if err != nil || published.Version != 3 || published.Draft != nil || published.Published == nil {
 		t.Fatalf("publish=%+v err=%v", published, err)
+	}
+	catalog, err := repo.ListCustomerStoreLocations(ctx, f.customer, "Main")
+	if err != nil || len(catalog) != 1 || !catalog[0].HasMenu {
+		t.Fatalf("published menu missing from customer catalog: %+v err=%v", catalog, err)
 	}
 	original := published.Published.ID
 	if store.maxTTL > 300*time.Second || store.maxTTL <= 0 {
@@ -146,7 +150,7 @@ func TestPostgresBranchPDFMenuLifecycle(t *testing.T) {
 	if published.Published.URLExpiresAt.Sub(svc.Now()) > 300*time.Second {
 		t.Fatal("URL exceeds TTL")
 	}
-	public, err = svc.PublicBranchMenu(ctx, f.branch)
+	public, err = svc.PublicBranchMenu(ctx, f.branch, model.MenuSpanish)
 	if err != nil || public.Published == nil || public.Published.ID != original {
 		t.Fatalf("public=%+v err=%v", public, err)
 	}
@@ -160,37 +164,37 @@ func TestPostgresBranchPDFMenuLifecycle(t *testing.T) {
 			t.Fatalf("public leaked %s", encoded)
 		}
 	}
-	if _, err = svc.UploadMenuDocument(ctx, f.owner, f.brand, f.branch, 2, "new.pdf", menuPDF(t)); !errors.Is(err, repository.ErrPreconditionFailed) {
+	if _, err = svc.UploadMenuDocument(ctx, f.owner, f.brand, f.branch, model.MenuSpanish, 2, "new.pdf", menuPDF(t)); !errors.Is(err, repository.ErrPreconditionFailed) {
 		t.Fatalf("stale=%v", err)
 	}
-	if _, err = svc.UploadMenuDocument(ctx, f.owner, f.brand, f.branch, 3, "fake.pdf", []byte("%PDF-1.4 fake")); !errors.Is(err, service.ErrMenuPDFInvalid) {
+	if _, err = svc.UploadMenuDocument(ctx, f.owner, f.brand, f.branch, model.MenuSpanish, 3, "fake.pdf", []byte("%PDF-1.4 fake")); !errors.Is(err, service.ErrMenuPDFInvalid) {
 		t.Fatalf("fake=%v", err)
 	}
 	store.failPut.Store(true)
-	if _, err = svc.UploadMenuDocument(ctx, f.owner, f.brand, f.branch, 3, "new.pdf", menuPDF(t)); !errors.Is(err, service.ErrMenuStorage) {
+	if _, err = svc.UploadMenuDocument(ctx, f.owner, f.brand, f.branch, model.MenuSpanish, 3, "new.pdf", menuPDF(t)); !errors.Is(err, service.ErrMenuStorage) {
 		t.Fatalf("put fail=%v", err)
 	}
 	store.failPut.Store(false)
 	store.failSign.Store(true)
-	if _, err = svc.UploadMenuDocument(ctx, f.owner, f.brand, f.branch, 3, "new.pdf", menuPDF(t)); !errors.Is(err, service.ErrMenuStorage) {
+	if _, err = svc.UploadMenuDocument(ctx, f.owner, f.brand, f.branch, model.MenuSpanish, 3, "new.pdf", menuPDF(t)); !errors.Is(err, service.ErrMenuStorage) {
 		t.Fatalf("sign fail=%v", err)
 	}
 	store.failSign.Store(false)
-	state, err := svc.BranchMenu(ctx, f.owner, f.brand, f.branch)
+	state, err := svc.BranchMenu(ctx, f.owner, f.brand, f.branch, model.MenuSpanish)
 	if err != nil || state.Version != 3 || state.Published.ID != original || state.Draft != nil {
 		t.Fatalf("failed replacement changed state=%+v err=%v", state, err)
 	}
 	next := uploadMenu(t, svc, f, 3)
 	store.failSign.Store(true)
-	if _, err = svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, 4, "publish", next.Draft.ID); !errors.Is(err, service.ErrMenuStorage) {
+	if _, err = svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, model.MenuSpanish, 4, "publish", next.Draft.ID); !errors.Is(err, service.ErrMenuStorage) {
 		t.Fatalf("publish sign fail=%v", err)
 	}
 	store.failSign.Store(false)
-	state, err = svc.BranchMenu(ctx, f.owner, f.brand, f.branch)
+	state, err = svc.BranchMenu(ctx, f.owner, f.brand, f.branch, model.MenuSpanish)
 	if err != nil || state.Version != 4 || state.Published.ID != original || state.Draft.ID != next.Draft.ID {
 		t.Fatalf("failed publish changed state=%+v err=%v", state, err)
 	}
-	state, err = svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, 4, "publish", next.Draft.ID)
+	state, err = svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, model.MenuSpanish, 4, "publish", next.Draft.ID)
 	if err != nil || state.Version != 5 || state.Published.ID != next.Draft.ID {
 		t.Fatalf("replacement=%+v err=%v", state, err)
 	}
@@ -199,31 +203,31 @@ func TestPostgresBranchPDFMenuLifecycle(t *testing.T) {
 	if err = p.QueryRow(ctx, `SELECT estado,delete_after FROM branch_menu_documents WHERE id=$1`, original).Scan(&status, &after); err != nil || status != "DELETE_PENDING" || time.Until(after) < 290*time.Second {
 		t.Fatalf("grace status=%s after=%s err=%v", status, after, err)
 	}
-	state, err = svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, 5, "unpublish", "")
+	state, err = svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, model.MenuSpanish, 5, "unpublish", "")
 	if err != nil || state.Version != 6 || state.Published != nil {
 		t.Fatalf("withdraw=%+v err=%v", state, err)
 	}
-	state, err = svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, 6, "unpublish", "")
+	state, err = svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, model.MenuSpanish, 6, "unpublish", "")
 	if err != nil || state.Version != 6 {
 		t.Fatalf("repeat withdraw=%+v err=%v", state, err)
 	}
 	state = uploadMenu(t, svc, f, 6)
-	state, err = svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, 7, "discard", "")
+	state, err = svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, model.MenuSpanish, 7, "discard", "")
 	if err != nil || state.Version != 8 || state.Draft != nil {
 		t.Fatalf("discard=%+v err=%v", state, err)
 	}
-	public, err = svc.PublicBranchMenu(ctx, f.branch)
+	public, err = svc.PublicBranchMenu(ctx, f.branch, model.MenuSpanish)
 	if err != nil || public.Published != nil {
 		t.Fatalf("withdrawn=%+v err=%v", public, err)
 	}
-	if _, err = repo.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, 8, "publish", uuid.NewString(), nil); !errors.Is(err, repository.ErrNotFound) {
+	if _, err = repo.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, model.MenuSpanish, 8, "publish", uuid.NewString(), nil); !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("other document=%v", err)
 	}
 	// Existing administrative role can manage PDFs, operators cannot.
 	if _, err = p.Exec(ctx, `UPDATE membresias_marca SET rol='ADMINISTRADOR' WHERE usuario_id=$1 AND marca_id=$2`, f.operator, f.brand); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = svc.BranchMenu(ctx, f.operator, f.brand, f.branch); err != nil {
+	if _, err = svc.BranchMenu(ctx, f.operator, f.brand, f.branch, model.MenuSpanish); err != nil {
 		t.Fatalf("admin=%v", err)
 	}
 }
@@ -232,7 +236,7 @@ func TestPostgresBranchPDFMenuConcurrentReplacement(t *testing.T) {
 	p, _, svc, store, f := menuFixture(t)
 	ctx := t.Context()
 	first := uploadMenu(t, svc, f, 1)
-	current, err := svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, 2, "publish", first.Draft.ID)
+	current, err := svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, model.MenuSpanish, 2, "publish", first.Draft.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +245,7 @@ func TestPostgresBranchPDFMenuConcurrentReplacement(t *testing.T) {
 	result := make(chan error, 2)
 	for i := 0; i < 2; i++ {
 		go func() {
-			_, e := svc.UploadMenuDocument(ctx, f.owner, f.brand, f.branch, 3, "replacement.pdf", menuPDF(t))
+			_, e := svc.UploadMenuDocument(ctx, f.owner, f.brand, f.branch, model.MenuSpanish, 3, "replacement.pdf", menuPDF(t))
 			result <- e
 		}()
 	}
@@ -267,13 +271,13 @@ func TestPostgresBranchPDFMenuConcurrentReplacement(t *testing.T) {
 	if successes != 1 || conflicts != 1 {
 		t.Fatalf("success=%d conflicts=%d", successes, conflicts)
 	}
-	state, err := svc.BranchMenu(ctx, f.owner, f.brand, f.branch)
+	state, err := svc.BranchMenu(ctx, f.owner, f.brand, f.branch, model.MenuSpanish)
 	if err != nil || state.Version != 4 || state.Published.ID != current.Published.ID || state.Draft == nil {
 		t.Fatalf("race state=%+v err=%v", state, err)
 	}
 	for _, action := range []string{"publish", "unpublish"} {
 		go func(action string) {
-			_, e := svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, 4, action, state.Draft.ID)
+			_, e := svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, model.MenuSpanish, 4, action, state.Draft.ID)
 			result <- e
 		}(action)
 	}
@@ -303,7 +307,7 @@ func TestPostgresBranchPDFMenuCleanupAndLifecycle(t *testing.T) {
 			p, repo, svc, store, f := menuFixture(t)
 			ctx := t.Context()
 			draft := uploadMenu(t, svc, f, 1)
-			if _, err := svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, 2, "publish", draft.Draft.ID); err != nil {
+			if _, err := svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, model.MenuSpanish, 2, "publish", draft.Draft.ID); err != nil {
 				t.Fatal(err)
 			}
 			_ = uploadMenu(t, svc, f, 3)
@@ -327,13 +331,13 @@ func TestPostgresBranchPDFMenuCleanupAndLifecycle(t *testing.T) {
 				if _, err := repo.AnonymizeAccount(ctx, f.owner, 1); err != nil {
 					t.Fatal(err)
 				}
-				public, err := svc.PublicBranchMenu(ctx, f.branch)
+				public, err := svc.PublicBranchMenu(ctx, f.branch, model.MenuSpanish)
 				if err != nil || public.Published == nil {
 					t.Fatalf("shared brand PDF lost=%+v err=%v", public, err)
 				}
 				return
 			}
-			if _, err := svc.PublicBranchMenu(ctx, f.branch); !errors.Is(err, repository.ErrNotFound) {
+			if _, err := svc.PublicBranchMenu(ctx, f.branch, model.MenuSpanish); !errors.Is(err, repository.ErrNotFound) {
 				t.Fatalf("closed branch=%v", err)
 			}
 			var pointers int
@@ -492,9 +496,9 @@ func TestPostgresBranchPDFMenuMigrationUpgrade(t *testing.T) {
 	if err = repo.CheckSchema(ctx, "0041"); err != nil {
 		t.Fatal(err)
 	}
-	initial, err := repo.BranchMenu(ctx, f.owner, f.brand, f.branch, nil)
-	if err != nil || initial.Version != 1 || initial.Published != nil {
-		t.Fatalf("upgraded=%+v err=%v", initial, err)
+	var menus int
+	if err = p.QueryRow(ctx, `SELECT count(*) FROM branch_menus WHERE sucursal_id=$1`, f.branch).Scan(&menus); err != nil || menus != 0 {
+		t.Fatalf("migration created a menu unexpectedly: count=%d err=%v", menus, err)
 	}
 	var cards int
 	if err = p.QueryRow(ctx, `SELECT count(*) FROM tarjetas WHERE id=$1`, f.card).Scan(&cards); err != nil || cards != 1 {
@@ -507,7 +511,7 @@ func TestPostgresMenuCompensationWaitsForActivation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
 	defer cancel()
 	document := model.MenuDocument{ID: uuid.NewString(), FileName: "menu.pdf", ByteSize: 1, PageCount: 1, ObjectKey: "menus/ambiguous.pdf"}
-	if err := repo.ReserveMenuDocument(ctx, f.owner, f.brand, f.branch, 1, document, bytes.Repeat([]byte{1}, 32)); err != nil {
+	if err := repo.ReserveMenuDocument(ctx, f.owner, f.brand, f.branch, model.MenuSpanish, 1, document, bytes.Repeat([]byte{1}, 32)); err != nil {
 		t.Fatal(err)
 	}
 	activation, err := p.Begin(ctx)
@@ -555,7 +559,7 @@ func TestPostgresMenuCompensationWaitsForActivation(t *testing.T) {
 	if err = p.QueryRow(ctx, `SELECT estado FROM branch_menu_documents WHERE id=$1`, document.ID).Scan(&status); err != nil || status != "READY" {
 		t.Fatalf("committed draft retired: status=%s err=%v", status, err)
 	}
-	state, err := repo.BranchMenu(ctx, f.owner, f.brand, f.branch, nil)
+	state, err := repo.BranchMenu(ctx, f.owner, f.brand, f.branch, model.MenuSpanish, nil)
 	if err != nil || state.Draft == nil || state.Draft.ID != document.ID {
 		t.Fatalf("draft lost=%+v err=%v", state, err)
 	}
@@ -565,7 +569,7 @@ func TestPostgresMenuPublicSigningProtectsDeletionGrace(t *testing.T) {
 	p, repo, svc, _, f := menuFixture(t)
 	ctx := t.Context()
 	draft := uploadMenu(t, svc, f, 1)
-	if _, err := svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, 2, "publish", draft.Draft.ID); err != nil {
+	if _, err := svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, model.MenuSpanish, 2, "publish", draft.Draft.ID); err != nil {
 		t.Fatal(err)
 	}
 	signing := make(chan struct{})
@@ -573,7 +577,7 @@ func TestPostgresMenuPublicSigningProtectsDeletionGrace(t *testing.T) {
 	done := make(chan error, 1)
 	var urlExpiry time.Time
 	go func() {
-		_, err := repo.PublicBranchMenu(ctx, f.branch, func(_ context.Context, d *model.MenuDocument) error {
+		_, err := repo.PublicBranchMenu(ctx, f.branch, model.MenuSpanish, func(_ context.Context, d *model.MenuDocument) error {
 			close(signing)
 			<-release
 			urlExpiry = time.Now().Add(300 * time.Second)
@@ -587,7 +591,7 @@ func TestPostgresMenuPublicSigningProtectsDeletionGrace(t *testing.T) {
 	// A withdrawal must wait until the public request finishes signing. This
 	// bounded context proves the lock instead of relying on a scheduling sleep.
 	blocked, cancel := context.WithTimeout(ctx, 150*time.Millisecond)
-	_, err := svc.ChangeMenuPublication(blocked, f.owner, f.brand, f.branch, 3, "unpublish", "")
+	_, err := svc.ChangeMenuPublication(blocked, f.owner, f.brand, f.branch, model.MenuSpanish, 3, "unpublish", "")
 	cancel()
 	if err == nil {
 		close(release)
@@ -597,7 +601,7 @@ func TestPostgresMenuPublicSigningProtectsDeletionGrace(t *testing.T) {
 	if err = <-done; err != nil {
 		t.Fatal(err)
 	}
-	if _, err = svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, 3, "unpublish", ""); err != nil {
+	if _, err = svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, model.MenuSpanish, 3, "unpublish", ""); err != nil {
 		t.Fatal(err)
 	}
 	var deletion time.Time
@@ -613,7 +617,7 @@ func TestPostgresMenuAbandonedUploadLeaseAndRetry(t *testing.T) {
 	p, repo, _, _, f := menuFixture(t)
 	ctx := t.Context()
 	document := model.MenuDocument{ID: uuid.NewString(), FileName: "menu.pdf", ByteSize: 1, PageCount: 1, ObjectKey: "menus/abandoned.pdf"}
-	if err := repo.ReserveMenuDocument(ctx, f.owner, f.brand, f.branch, 1, document, bytes.Repeat([]byte{1}, 32)); err != nil {
+	if err := repo.ReserveMenuDocument(ctx, f.owner, f.brand, f.branch, model.MenuSpanish, 1, document, bytes.Repeat([]byte{1}, 32)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := p.Exec(ctx, `UPDATE branch_menu_documents SET created_at=now()-interval '16 minutes' WHERE id=$1`, document.ID); err != nil {
@@ -650,7 +654,7 @@ func TestPostgresMenuAbandonedUploadLeaseAndRetry(t *testing.T) {
 }
 
 func TestPostgresMenuPDFThirtyMiBUpgradePreservesPublication(t *testing.T) {
-	p, repo, svc, _, f := menuFixture(t)
+	p, repo, _, _, f := menuFixture(t)
 	ctx := t.Context()
 	rollbackCodeMigrationFixture(t, p)
 	// Arrange the applied 0041 schema, including an actual existing publication.
@@ -664,9 +668,11 @@ func TestPostgresMenuPDFThirtyMiBUpgradePreservesPublication(t *testing.T) {
 	if _, err = p.Exec(ctx, `DELETE FROM schema_migrations WHERE version='0042'`); err != nil {
 		t.Fatal(err)
 	}
-	draft := uploadMenu(t, svc, f, 1)
-	before, err := svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, 2, "publish", draft.Draft.ID)
-	if err != nil {
+	publicationID := uuid.NewString()
+	if _, err = p.Exec(ctx, `INSERT INTO branch_menu_documents(id,marca_id,sucursal_id,file_name,byte_size,page_count,sha256,object_key,estado) VALUES($1,$2,$3,'carta.pdf',1024,1,$4,$5,'READY')`, publicationID, f.brand, f.branch, make([]byte, 32), "menus/"+publicationID+".pdf"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = p.Exec(ctx, `INSERT INTO branch_menus(sucursal_id,marca_id,version,published_document_id) VALUES($1,$2,3,$3)`, f.branch, f.brand, publicationID); err != nil {
 		t.Fatal(err)
 	}
 	if err = repo.CheckSchema(ctx, "0041"); err != nil {
@@ -704,16 +710,16 @@ func TestPostgresMenuPDFThirtyMiBUpgradePreservesPublication(t *testing.T) {
 	if err = repo.CheckSchema(ctx, "0042"); err != nil {
 		t.Fatal(err)
 	}
-	after, err := svc.BranchMenu(ctx, f.owner, f.brand, f.branch)
-	if err != nil || after.Version != before.Version || after.Draft != nil || after.Published == nil ||
-		after.Published.ID != before.Published.ID || after.Published.ByteSize != before.Published.ByteSize {
-		t.Fatalf("publication changed during expansion: before=%+v after=%+v err=%v", before, after, err)
+	var version int
+	var id string
+	if err = p.QueryRow(ctx, `SELECT version,published_document_id::text FROM branch_menus WHERE sucursal_id=$1`, f.branch).Scan(&version, &id); err != nil || version != 3 || id != publicationID {
+		t.Fatalf("publication changed during expansion: version=%d id=%s err=%v", version, id, err)
 	}
 	const maximum int64 = 30 * 1024 * 1024
 	for _, size := range []int64{0, 1, maximum, maximum + 1} {
 		id := uuid.NewString()
 		document := model.MenuDocument{ID: id, FileName: "scan.pdf", MIMEType: "application/pdf", ByteSize: size, PageCount: 1, ObjectKey: "menus/" + id + ".pdf"}
-		err := repo.ReserveMenuDocument(ctx, f.owner, f.brand, f.branch, after.Version, document, make([]byte, 32))
+		_, err := p.Exec(ctx, `INSERT INTO branch_menu_documents(id,marca_id,sucursal_id,file_name,byte_size,page_count,sha256,object_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, document.ID, f.brand, f.branch, document.FileName, document.ByteSize, document.PageCount, make([]byte, 32), document.ObjectKey)
 		if size == 0 || size > maximum {
 			var pgErr *pgconn.PgError
 			if !errors.As(err, &pgErr) || pgErr.Code != "23514" || pgErr.ConstraintName != "branch_menu_documents_byte_size_check" {
@@ -730,5 +736,70 @@ func TestPostgresMenuPDFThirtyMiBUpgradePreservesPublication(t *testing.T) {
 	var large int
 	if err = p.QueryRow(ctx, `SELECT count(*) FROM branch_menu_documents WHERE byte_size=$1`, maximum).Scan(&large); err != nil || large != 1 {
 		t.Fatalf("large metadata lost after rejected down: count=%d err=%v", large, err)
+	}
+}
+
+func TestPostgresMenuPDFPageCountExpansion(t *testing.T) {
+	p, repo, svc, _, f := menuFixture(t)
+	ctx := t.Context()
+	up, err := os.ReadFile("../../migrations/0047_branch_pdf_no_page_cap.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	down, err := os.ReadFile("../../migrations/0047_branch_pdf_no_page_cap.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = p.Exec(ctx, string(down)); err != nil {
+		t.Fatal(err)
+	}
+	draft := uploadMenu(t, svc, f, 1)
+	before, err := svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, model.MenuSpanish, draft.Version, "publish", draft.Draft.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = p.Exec(ctx, string(up)); err != nil {
+		t.Fatal(err)
+	}
+	after, err := svc.BranchMenu(ctx, f.owner, f.brand, f.branch, model.MenuSpanish)
+	if err != nil || after.Version != before.Version || after.Published == nil || after.Published.ID != before.Published.ID {
+		t.Fatalf("publication changed during expansion: before=%+v after=%+v err=%v", before, after, err)
+	}
+	body, err := os.ReadFile("../service/testdata/menu-31.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	long, err := svc.UploadMenuDocument(ctx, f.owner, f.brand, f.branch, model.MenuEnglish, 1, "menu-en.pdf", body)
+	if err != nil || long.Draft == nil || long.Draft.PageCount != 31 {
+		t.Fatalf("31-page menu was not stored: state=%+v err=%v", long, err)
+	}
+	published, err := svc.ChangeMenuPublication(ctx, f.owner, f.brand, f.branch, model.MenuEnglish, long.Version, "publish", long.Draft.ID)
+	if err != nil || published.Published == nil || published.Published.PageCount != 31 {
+		t.Fatalf("31-page menu was not published: state=%+v err=%v", published, err)
+	}
+	spanish, err := svc.PublicBranchMenu(ctx, f.branch, model.MenuSpanish)
+	if err != nil || spanish.Published == nil || spanish.Published.ID != before.Published.ID {
+		t.Fatalf("English publication changed Spanish menu: state=%+v err=%v", spanish, err)
+	}
+	english, err := svc.PublicBranchMenu(ctx, f.branch, model.MenuEnglish)
+	if err != nil || english.Published == nil || english.Published.ID != published.Published.ID {
+		t.Fatalf("English PDF unavailable: state=%+v err=%v", english, err)
+	}
+	catalog, err := repo.ListCustomerStoreLocations(ctx, f.customer, "")
+	if err != nil || len(catalog) != 1 || !catalog[0].HasMenu || !catalog[0].HasEnglishMenu {
+		t.Fatalf("catalog does not show both published PDFs: %+v err=%v", catalog, err)
+	}
+	if _, err = p.Exec(ctx, string(down)); err == nil {
+		t.Fatal("unsafe down accepted an existing 31-page document")
+	}
+	var pages int
+	if err = p.QueryRow(ctx, `SELECT page_count FROM branch_menu_documents WHERE id=$1`, published.Published.ID).Scan(&pages); err != nil || pages != 31 {
+		t.Fatalf("31-page document changed after failed down: pages=%d err=%v", pages, err)
+	}
+	id := uuid.NewString()
+	empty := model.MenuDocument{ID: id, FileName: "empty.pdf", MIMEType: "application/pdf", ByteSize: 1, PageCount: 0, ObjectKey: "menus/" + id + ".pdf"}
+	var pgErr *pgconn.PgError
+	if err = repo.ReserveMenuDocument(ctx, f.owner, f.brand, f.branch, model.MenuEnglish, published.Version, empty, make([]byte, 32)); !errors.As(err, &pgErr) || pgErr.ConstraintName != "branch_menu_documents_page_count_check" {
+		t.Fatalf("zero-page document must fail DB check: %v", err)
 	}
 }

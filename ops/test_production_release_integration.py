@@ -46,6 +46,11 @@ def main():
                                     'QR_PEPPER': 'y' * 32, 'PUBLIC_APP_URL': 'http://localhost:8080'}
 
             def image_command(self, executable, values, arguments, network=None, mounts=()):
+                # The synthetic SQL is bind-mounted, so image-layer permissions
+                # do not apply to this isolated fixture.
+                fixture.chmod(0o755)
+                for path in fixture.glob('*.sql'):
+                    path.chmod(0o644)
                 return super().image_command(executable, values, arguments, network,
                                              mounts=(*mounts, (fixture, '/migrations:ro')))
 
