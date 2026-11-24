@@ -42,6 +42,13 @@ func (s *Service) ListGiftCardBatches(ctx context.Context, actorID, brandID int6
 	return s.Repo.ListGiftCardBatches(ctx, actorID, brandID)
 }
 
+func (s *Service) GiftCardBatch(ctx context.Context, actorID, brandID int64, batchID string) (model.GiftCardBatch, error) {
+	if _, err := uuid.Parse(batchID); err != nil {
+		return model.GiftCardBatch{}, ErrInvalidRequest
+	}
+	return s.Repo.GiftCardBatch(ctx, actorID, brandID, batchID, s.Config.PublicAppURL)
+}
+
 func (s *Service) RevokeGiftCardBatch(ctx context.Context, actorID, brandID int64, batchID string) error {
 	if _, err := uuid.Parse(batchID); err != nil {
 		return ErrInvalidRequest

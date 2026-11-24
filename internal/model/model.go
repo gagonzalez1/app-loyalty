@@ -643,11 +643,19 @@ type GiftCardCreateRequest struct {
 }
 
 type GiftCardCode struct {
-	ID        string `json:"id"`
-	Token     string `json:"token,omitempty"`
-	ClaimURL  string `json:"claim_url,omitempty"`
-	TokenHint string `json:"token_hint"`
-	Redeemed  bool   `json:"redeemed"`
+	ID         string            `json:"id"`
+	Token      string            `json:"token,omitempty"`
+	ClaimURL   string            `json:"claim_url,omitempty"`
+	TokenHint  string            `json:"token_hint"`
+	Redeemed   bool              `json:"redeemed"`
+	RedeemedAt *time.Time        `json:"redeemed_at,omitempty"`
+	Redeemer   *GiftCardRedeemer `json:"redeemer,omitempty"`
+}
+
+type GiftCardRedeemer struct {
+	UserCode string `json:"user_code"`
+	Name     string `json:"name"`
+	Email    string `json:"email"`
 }
 
 type GiftCardBatch struct {

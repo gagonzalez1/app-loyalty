@@ -219,8 +219,8 @@ func TestPostgresDemoSellosLifecycle(t *testing.T) {
 	if _, err = pool.Exec(ctx, `INSERT INTO schema_migrations(version) VALUES('0018')`); err != nil {
 		t.Fatal(err)
 	}
-	for _, version := range []string{"0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040", "0041", "0042", "0043", "0044", "0045", "0046", "0047", "0048", "0049", "0050", "0051", "0052"} {
-		migration, readErr := os.ReadFile(filepath.Join("..", "..", "migrations", version+map[string]string{"0019": "_mercado_pago_subscriptions", "0020": "_subscription_checkout_reservation", "0021": "_expo_push", "0022": "_google_reviews", "0023": "_referrals", "0024": "_referral_billing", "0025": "_subscription_prices", "0026": "_subscription_price_change_history", "0027": "_referral_campaign_editing", "0028": "_influencer_welcome_emails", "0029": "_subscription_confirmation_emails", "0030": "_email_change", "0031": "_card_templates", "0032": "_first_login_trial", "0033": "_user_codes", "0034": "_branch_proration", "0035": "_closed_test_privacy", "0036": "_web_push", "0037": "_movement_reversals", "0038": "_benefit_expiration", "0039": "_card_templates", "0040": "_store_favorites", "0041": "_branch_pdf_menus", "0042": "_branch_pdf_30mib", "0043": "_email_verification_codes", "0044": "_apple_identity", "0045": "_apple_billing", "0046": "_branch_public_profile", "0047": "_branch_pdf_no_page_cap", "0048": "_branch_menu_languages", "0049": "_google_browser_flows", "0050": "_apple_browser_identity", "0051": "_schema_reconciliation_log", "0052": "_gift_cards"}[version]+".up.sql"))
+	for _, version := range []string{"0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040", "0041", "0042", "0043", "0044", "0045", "0046", "0047", "0048", "0049", "0050", "0051", "0052", "0053"} {
+		migration, readErr := os.ReadFile(filepath.Join("..", "..", "migrations", version+map[string]string{"0019": "_mercado_pago_subscriptions", "0020": "_subscription_checkout_reservation", "0021": "_expo_push", "0022": "_google_reviews", "0023": "_referrals", "0024": "_referral_billing", "0025": "_subscription_prices", "0026": "_subscription_price_change_history", "0027": "_referral_campaign_editing", "0028": "_influencer_welcome_emails", "0029": "_subscription_confirmation_emails", "0030": "_email_change", "0031": "_card_templates", "0032": "_first_login_trial", "0033": "_user_codes", "0034": "_branch_proration", "0035": "_closed_test_privacy", "0036": "_web_push", "0037": "_movement_reversals", "0038": "_benefit_expiration", "0039": "_card_templates", "0040": "_store_favorites", "0041": "_branch_pdf_menus", "0042": "_branch_pdf_30mib", "0043": "_email_verification_codes", "0044": "_apple_identity", "0045": "_apple_billing", "0046": "_branch_public_profile", "0047": "_branch_pdf_no_page_cap", "0048": "_branch_menu_languages", "0049": "_google_browser_flows", "0050": "_apple_browser_identity", "0051": "_schema_reconciliation_log", "0052": "_gift_cards", "0053": "_gift_card_insights"}[version]+".up.sql"))
 		if readErr != nil {
 			t.Fatal(readErr)
 		}
@@ -246,7 +246,7 @@ func TestPostgresDemoSellosLifecycle(t *testing.T) {
 		t.Fatalf("legacy session revoked=%t err=%v", legacySessionRevoked, err)
 	}
 	outboxKey := []byte("01234567890123456789012345678901")
-	cfg := config.Config{JWTSecret: "jwt-secret-0123456789012345678901", JWTIssuer: "puntazo", QRPepper: "qr-pepper-01234567890123456789012", DemoSignupEnabled: true, ExpectedSchemaVersion: "0052", PublicAppURL: "https://app.puntazo.test", OutboxEncryptionKey: outboxKey, MediaURLTTL: 5 * time.Minute, MercadoPagoBranchPrice: 12300, MercadoPagoPointsPrice: 45600}
+	cfg := config.Config{JWTSecret: "jwt-secret-0123456789012345678901", JWTIssuer: "puntazo", QRPepper: "qr-pepper-01234567890123456789012", DemoSignupEnabled: true, ExpectedSchemaVersion: "0053", PublicAppURL: "https://app.puntazo.test", OutboxEncryptionKey: outboxKey, MediaURLTTL: 5 * time.Minute, MercadoPagoBranchPrice: 12300, MercadoPagoPointsPrice: 45600}
 	repo := repository.New(pool, outboxKey)
 	var referralAdminID int64
 	if err = pool.QueryRow(ctx, `INSERT INTO backoffice_users(email,password_hash,totp_secret,role) VALUES('admin-referral@example.com','unused','ABCDEFGHIJKLMNOPQRSTUVWX23456789','ADMIN_SISTEMA') RETURNING id`).Scan(&referralAdminID); err != nil {
@@ -1827,6 +1827,24 @@ func TestPostgresDemoSellosLifecycle(t *testing.T) {
 	if err != nil || len(giftBatches) != 1 || giftBatches[0].RedeemedCount != 1 {
 		t.Fatalf("gift batches=%+v err=%v", giftBatches, err)
 	}
+	giftDetail, err := svc.GiftCardBatch(ctx, merchant.User.ID, merchant.Merchant.BrandID, giftBatch.ID)
+	if err != nil || len(giftDetail.Codes) != 2 {
+		t.Fatalf("gift detail redeemed=%+v err=%v", giftDetail, err)
+	}
+	var redeemedCode, printableCode *model.GiftCardCode
+	for index := range giftDetail.Codes {
+		if giftDetail.Codes[index].Redeemed {
+			redeemedCode = &giftDetail.Codes[index]
+		} else {
+			printableCode = &giftDetail.Codes[index]
+		}
+	}
+	if redeemedCode == nil || redeemedCode.Redeemer == nil || redeemedCode.Redeemer.Email != giftCustomer.User.Email || redeemedCode.ClaimURL != "" {
+		t.Fatalf("gift detail redeemed code=%+v", redeemedCode)
+	}
+	if printableCode == nil || printableCode.ClaimURL == "" || strings.Contains(printableCode.ClaimURL, giftBatch.Codes[0].Token) {
+		t.Fatalf("gift detail printable=%+v", printableCode)
+	}
 	merchantAccount, err := svc.CurrentUser(ctx, merchant.User.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -1856,7 +1874,7 @@ func TestPostgresDemoSellosLifecycle(t *testing.T) {
 	if err = repo.ConfirmEmailChange(ctx, changeHash[:], time.Now()); !errors.Is(err, repository.ErrIdentityTokenInvalid) {
 		t.Fatalf("email change token reused: %v", err)
 	}
-	if err = repo.CheckSchema(ctx, "0052"); err != nil {
+	if err = repo.CheckSchema(ctx, "0053"); err != nil {
 		t.Fatal(err)
 	}
 	if err = repo.CheckSchema(ctx, "9999"); err == nil {

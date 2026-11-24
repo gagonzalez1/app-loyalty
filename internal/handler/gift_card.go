@@ -59,6 +59,28 @@ func (h *Handler) GiftCardBatches(c *gin.Context) {
 	c.JSON(http.StatusOK, web.Envelope[[]model.GiftCardBatch]{Data: data, RequestID: web.RequestID(c)})
 }
 
+func (h *Handler) GiftCardBatch(c *gin.Context) {
+	a, ok := actor(c)
+	if !ok {
+		return
+	}
+	if a.AccountType != "PERSONAL_MARCA" {
+		writeErr(c, service.ErrForbidden)
+		return
+	}
+	brandID, err := positiveID(c.Param("brand_id"))
+	if err != nil {
+		writeErr(c, service.ErrInvalidRequest)
+		return
+	}
+	data, err := h.Service.GiftCardBatch(c.Request.Context(), a.ID, brandID, c.Param("batch_id"))
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, web.Envelope[model.GiftCardBatch]{Data: data, RequestID: web.RequestID(c)})
+}
+
 func (h *Handler) RevokeGiftCardBatch(c *gin.Context) {
 	a, ok := actor(c)
 	if !ok {
