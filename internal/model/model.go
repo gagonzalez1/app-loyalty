@@ -29,6 +29,8 @@ type RegisterDemoMerchantRequest struct {
 	BranchLongitude    *float64 `json:"branch_longitude,omitempty"`
 	ProgramType        string   `json:"program_type"`
 	ReferralCode       string   `json:"referral_code,omitempty"`
+
+	PublicProfile *BranchPublicProfile `json:"perfil_publico,omitempty"`
 }
 type BranchRegistrationLocation struct {
 	BranchAddress    *string  `json:"branch_address,omitempty"`
@@ -37,6 +39,8 @@ type BranchRegistrationLocation struct {
 	BranchPostalCode *string  `json:"branch_postal_code,omitempty"`
 	BranchLatitude   *float64 `json:"branch_latitude,omitempty"`
 	BranchLongitude  *float64 `json:"branch_longitude,omitempty"`
+
+	PublicProfile *BranchPublicProfile `json:"perfil_publico,omitempty"`
 }
 type LoginRequest struct {
 	Email    string `json:"email"`
@@ -63,6 +67,8 @@ type GoogleMerchantRegistration struct {
 	BranchLongitude  *float64 `json:"branch_longitude,omitempty"`
 	ProgramType      string   `json:"program_type"`
 	ReferralCode     string   `json:"referral_code,omitempty"`
+
+	PublicProfile *BranchPublicProfile `json:"perfil_publico,omitempty"`
 }
 
 type User struct {
@@ -240,6 +246,7 @@ type UpdateStaffRequest struct {
 type AuthMethods struct {
 	Password bool `json:"password"`
 	Google   bool `json:"google"`
+	Apple    bool `json:"apple"`
 }
 type CurrentUser struct {
 	AdultConfirmed     bool         `json:"adult_confirmed"`
@@ -259,6 +266,7 @@ type AccountExportCard struct {
 	CreatedAt     time.Time `json:"created_at"`
 }
 type AccountExport struct {
+	AppleIdentity     *AppleIdentityExport     `json:"apple_identity,omitempty"`
 	FavoriteBranchIDs []int64                  `json:"sucursales_favoritas"`
 	ReviewProgress    []ReviewProgressExport   `json:"progreso_resenas"`
 	ReviewInvitations []ReviewInvitationExport `json:"invitaciones_resenas"`
@@ -331,6 +339,8 @@ type Branch struct {
 	Version    int       `json:"version"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
+
+	PublicProfile *BranchPublicProfile `json:"perfil_publico,omitempty"`
 }
 type CreateBranchRequest struct {
 	Name       string   `json:"nombre"`
@@ -340,6 +350,8 @@ type CreateBranchRequest struct {
 	PostalCode *string  `json:"codigo_postal,omitempty"`
 	Latitude   *float64 `json:"latitud,omitempty"`
 	Longitude  *float64 `json:"longitud,omitempty"`
+
+	PublicProfile *BranchPublicProfile `json:"perfil_publico,omitempty"`
 }
 type UpdateBranchRequest struct {
 	Name       string   `json:"nombre"`
@@ -350,6 +362,8 @@ type UpdateBranchRequest struct {
 	Latitude   *float64 `json:"latitud,omitempty"`
 	Longitude  *float64 `json:"longitud,omitempty"`
 	Primary    *bool    `json:"principal,omitempty"`
+
+	PublicProfile *BranchPublicProfile `json:"perfil_publico,omitempty"`
 }
 type Program struct {
 	ID                    int64     `json:"id"`
@@ -620,6 +634,58 @@ type MovementReversal struct {
 	OccurredAt    time.Time `json:"occurred_at"`
 }
 
+type GiftCardCreateRequest struct {
+	Title     string     `json:"title"`
+	BranchID  int64      `json:"branch_id"`
+	Amount    int64      `json:"amount"`
+	Quantity  int        `json:"quantity"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+type GiftCardCode struct {
+	ID        string `json:"id"`
+	Token     string `json:"token,omitempty"`
+	ClaimURL  string `json:"claim_url,omitempty"`
+	TokenHint string `json:"token_hint"`
+	Redeemed  bool   `json:"redeemed"`
+}
+
+type GiftCardBatch struct {
+	ID            string         `json:"id"`
+	BrandID       int64          `json:"brand_id"`
+	BrandName     string         `json:"brand_name,omitempty"`
+	BranchID      int64          `json:"branch_id"`
+	BranchName    string         `json:"branch_name,omitempty"`
+	Title         string         `json:"title"`
+	ProgramType   string         `json:"program_type"`
+	Amount        int64          `json:"amount"`
+	Quantity      int            `json:"quantity"`
+	RedeemedCount int            `json:"redeemed_count"`
+	Status        string         `json:"status"`
+	ExpiresAt     *time.Time     `json:"expires_at,omitempty"`
+	CreatedAt     time.Time      `json:"created_at"`
+	Codes         []GiftCardCode `json:"codes,omitempty"`
+}
+
+type GiftCardClaim struct {
+	BrandName   string     `json:"brand_name"`
+	BranchName  string     `json:"branch_name"`
+	Title       string     `json:"title"`
+	ProgramType string     `json:"program_type"`
+	Amount      int64      `json:"amount"`
+	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
+	Redeemed    bool       `json:"redeemed"`
+}
+
+type GiftCardRedeemRequest struct {
+	Token string `json:"token"`
+}
+
+type GiftCardRedemption struct {
+	Claim    GiftCardClaim `json:"gift_card"`
+	Movement Movement      `json:"movement"`
+}
+
 type LegacyRegisterRequest struct {
 	LastName string `json:"apellido"`
 	Name     string `json:"nombre"`
@@ -645,6 +711,8 @@ type GoogleLinkRequest struct {
 	Password string `json:"password"`
 }
 type ReauthenticateRequest struct {
-	Password string `json:"password,omitempty"`
-	IDToken  string `json:"id_token,omitempty"`
+	Password string          `json:"password,omitempty"`
+	IDToken  string          `json:"id_token,omitempty"`
+	Apple    *AppleAuthProof `json:"apple,omitempty"`
+	Version  int             `json:"version,omitempty"`
 }

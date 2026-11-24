@@ -58,10 +58,10 @@ func (w Worker) RunRetention(ctx context.Context) {
 	if err != nil {
 		w.Logger.Error("retention batch failed", "error", err)
 	} else {
-		w.Logger.Info("retention batch completed", "previews", stats.PreviewsDeleted, "idempotencies", stats.IdempotenciesDeleted, "sessions", stats.SessionsDeleted, "identity_tokens", stats.IdentityTokensDeleted, "outbox_redacted", stats.OutboxRedacted, "outbox_deleted", stats.OutboxDeleted)
+		w.Logger.Info("retention batch completed", "previews", stats.PreviewsDeleted, "idempotencies", stats.IdempotenciesDeleted, "sessions", stats.SessionsDeleted, "identity_tokens", stats.IdentityTokensDeleted, "google_browser_flows", stats.GoogleBrowserFlowsDeleted, "outbox_redacted", stats.OutboxRedacted, "outbox_deleted", stats.OutboxDeleted)
 	}
 	if w.Observer != nil {
-		w.Observer.ObserveRetention("database", stats.PreviewsDeleted+stats.IdempotenciesDeleted+stats.SessionsDeleted+stats.IdentityTokensDeleted+stats.OutboxRedacted+stats.OutboxDeleted, time.Since(started), err)
+		w.Observer.ObserveRetention("database", stats.PreviewsDeleted+stats.IdempotenciesDeleted+stats.SessionsDeleted+stats.IdentityTokensDeleted+stats.GoogleBrowserFlowsDeleted+stats.OutboxRedacted+stats.OutboxDeleted, time.Since(started), err)
 	}
 }
 

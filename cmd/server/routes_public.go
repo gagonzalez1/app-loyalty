@@ -2,11 +2,13 @@ package main
 
 import (
 	"clientesFrecuentes/internal/handler"
+	"clientesFrecuentes/internal/middleware"
 
 	"github.com/gin-gonic/gin"
 )
 
 func registerPublicRoutes(r *gin.RouterGroup, h *handler.Handler) {
+	r.GET("/public/gift-cards/:token", h.PublicGiftCardClaim)
 	r.GET("/public/sucursales/:branch_id/menu", h.PublicBranchMenu)
 	r.GET("/public/marcas/:brand_id/menus", h.PublicBrandMenus)
 	r.GET("/health/live", h.HealthLive)
@@ -17,6 +19,23 @@ func registerPublicRoutes(r *gin.RouterGroup, h *handler.Handler) {
 	r.POST("/auth/register", h.RegisterCustomer)
 	r.POST("/auth/login", h.Login)
 	r.POST("/auth/google", h.LoginGoogle)
+	r.GET("/auth/google/browser/config", h.GoogleBrowserConfig)
+	r.POST("/auth/google/browser/start", h.StartGoogleBrowser)
+	r.POST("/auth/google/browser/callback", h.GoogleBrowserCallback)
+	r.POST("/auth/google/browser/finish", h.FinishGoogleBrowser)
+	optionalAuth := func(c *gin.Context) {
+		if c.GetHeader("Authorization") != "" {
+			middleware.RequireAuth(h.Tokens, h.Repo)(c)
+		} else {
+			c.Next()
+		}
+	}
+	r.POST("/auth/apple/challenge", optionalAuth, h.AppleChallenge)
+	r.POST("/auth/apple/browser/start", optionalAuth, h.StartAppleBrowser)
+	r.POST("/auth/apple/browser/callback", h.AppleBrowserCallback)
+	r.POST("/auth/apple/browser/finish", optionalAuth, h.FinishAppleBrowser)
+	r.POST("/auth/apple", h.LoginApple)
+	r.POST("/apple/app-store/notifications", h.AppleAppStoreNotification)
 	r.POST("/auth/refresh", h.Refresh)
 	r.POST("/auth/logout", h.Logout)
 	r.GET("/auth/challenge", h.Challenge)

@@ -85,7 +85,7 @@ func (r *Repository) ListBranches(ctx context.Context, actorID, brandID int64) (
 	} else if err != nil {
 		return nil, err
 	}
-	rows, err := r.Pool.Query(ctx, `SELECT s.id,s.marca_id,s.nombre,s.direccion,s.activo,s.localidad,s.provincia,s.codigo_postal,s.latitud,s.longitud,s.principal,s.version,s.created_at,s.updated_at FROM sucursales s WHERE s.marca_id=$1 AND ($2 IN ('PROPIETARIO','ADMINISTRADOR') OR EXISTS(SELECT 1 FROM membresias_marca mm JOIN membresias_sucursales ms ON ms.membresia_id=mm.id AND ms.activo WHERE mm.usuario_id=$3 AND mm.marca_id=$1 AND mm.activo AND ms.sucursal_id=s.id)) ORDER BY s.id`, brandID, role, actorID)
+	rows, err := r.Pool.Query(ctx, `SELECT s.id,s.marca_id,s.nombre,s.direccion,s.activo,s.localidad,s.provincia,s.codigo_postal,s.latitud,s.longitud,s.principal,s.version,s.created_at,s.updated_at,s.perfil_publico FROM sucursales s WHERE s.marca_id=$1 AND ($2 IN ('PROPIETARIO','ADMINISTRADOR') OR EXISTS(SELECT 1 FROM membresias_marca mm JOIN membresias_sucursales ms ON ms.membresia_id=mm.id AND ms.activo WHERE mm.usuario_id=$3 AND mm.marca_id=$1 AND mm.activo AND ms.sucursal_id=s.id)) ORDER BY s.id`, brandID, role, actorID)
 	if err != nil {
 		return nil, err
 	}
@@ -102,11 +102,11 @@ func (r *Repository) ListBranches(ctx context.Context, actorID, brandID int64) (
 }
 
 func scanBranch(row rowScanner, b *model.Branch) error {
-	return row.Scan(&b.ID, &b.BrandID, &b.Name, &b.Address, &b.Active, &b.Locality, &b.Province, &b.PostalCode, &b.Latitude, &b.Longitude, &b.Primary, &b.Version, &b.CreatedAt, &b.UpdatedAt)
+	return row.Scan(&b.ID, &b.BrandID, &b.Name, &b.Address, &b.Active, &b.Locality, &b.Province, &b.PostalCode, &b.Latitude, &b.Longitude, &b.Primary, &b.Version, &b.CreatedAt, &b.UpdatedAt, &b.PublicProfile)
 }
 func (r *Repository) GetBranch(ctx context.Context, actorID, brandID, branchID int64) (model.Branch, error) {
 	var b model.Branch
-	err := scanBranch(r.Pool.QueryRow(ctx, `SELECT s.id,s.marca_id,s.nombre,s.direccion,s.activo,s.localidad,s.provincia,s.codigo_postal,s.latitud,s.longitud,s.principal,s.version,s.created_at,s.updated_at FROM sucursales s JOIN membresias_marca mm ON mm.marca_id=s.marca_id AND mm.usuario_id=$1 AND mm.activo LEFT JOIN membresias_sucursales ms ON ms.membresia_id=mm.id AND ms.sucursal_id=s.id AND ms.activo WHERE s.id=$3 AND s.marca_id=$2 AND (mm.rol IN ('PROPIETARIO','ADMINISTRADOR') OR ms.sucursal_id IS NOT NULL)`, actorID, brandID, branchID), &b)
+	err := scanBranch(r.Pool.QueryRow(ctx, `SELECT s.id,s.marca_id,s.nombre,s.direccion,s.activo,s.localidad,s.provincia,s.codigo_postal,s.latitud,s.longitud,s.principal,s.version,s.created_at,s.updated_at,s.perfil_publico FROM sucursales s JOIN membresias_marca mm ON mm.marca_id=s.marca_id AND mm.usuario_id=$1 AND mm.activo LEFT JOIN membresias_sucursales ms ON ms.membresia_id=mm.id AND ms.sucursal_id=s.id AND ms.activo WHERE s.id=$3 AND s.marca_id=$2 AND (mm.rol IN ('PROPIETARIO','ADMINISTRADOR') OR ms.sucursal_id IS NOT NULL)`, actorID, brandID, branchID), &b)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = ErrNotFound
 	}
@@ -130,8 +130,11 @@ func (r *Repository) CreateBranch(ctx context.Context, actorID, brandID int64, r
 	if err = requireNoActiveSubscription(ctx, tx, brandID); err != nil {
 		return model.Branch{}, err
 	}
+	if err = RequireAppleWrite(ctx, tx, brandID, 1, r.Now(), r.appleEnvironment()); err != nil {
+		return model.Branch{}, err
+	}
 	var b model.Branch
-	err = scanBranch(tx.QueryRow(ctx, `INSERT INTO sucursales(marca_id,nombre,direccion,localidad,provincia,codigo_postal,latitud,longitud) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,marca_id,nombre,direccion,activo,localidad,provincia,codigo_postal,latitud,longitud,principal,version,created_at,updated_at`, brandID, req.Name, req.Address, req.Locality, req.Province, req.PostalCode, req.Latitude, req.Longitude), &b)
+	err = scanBranch(tx.QueryRow(ctx, `INSERT INTO sucursales(marca_id,nombre,direccion,localidad,provincia,codigo_postal,latitud,longitud,perfil_publico) VALUES($1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9::jsonb,'null'::jsonb)) RETURNING id,marca_id,nombre,direccion,activo,localidad,provincia,codigo_postal,latitud,longitud,principal,version,created_at,updated_at,perfil_publico`, brandID, req.Name, req.Address, req.Locality, req.Province, req.PostalCode, req.Latitude, req.Longitude, req.PublicProfile), &b)
 	if err != nil {
 		return b, err
 	}
@@ -169,7 +172,7 @@ func (r *Repository) UpdateBranch(ctx context.Context, actorID, brandID, branchI
 			return model.Branch{}, err
 		}
 	}
-	tag, err := tx.Exec(ctx, `UPDATE sucursales SET nombre=$3,direccion=$4,localidad=$5,provincia=$6,codigo_postal=$7,latitud=$8,longitud=$9,principal=CASE WHEN $10 THEN $11 ELSE principal END,version=version+1,updated_at=now() WHERE id=$1 AND marca_id=$2 AND version=$12 AND activo`, branchID, brandID, req.Name, req.Address, req.Locality, req.Province, req.PostalCode, req.Latitude, req.Longitude, req.Primary != nil, req.Primary, version)
+	tag, err := tx.Exec(ctx, `UPDATE sucursales SET nombre=$3,direccion=$4,localidad=$5,provincia=$6,codigo_postal=$7,latitud=$8,longitud=$9,principal=CASE WHEN $10 THEN $11 ELSE principal END,perfil_publico=COALESCE(NULLIF($13::jsonb,'null'::jsonb),perfil_publico),version=version+1,updated_at=now() WHERE id=$1 AND marca_id=$2 AND version=$12 AND activo`, branchID, brandID, req.Name, req.Address, req.Locality, req.Province, req.PostalCode, req.Latitude, req.Longitude, req.Primary != nil, req.Primary, version, req.PublicProfile)
 	if err != nil {
 		return model.Branch{}, err
 	}

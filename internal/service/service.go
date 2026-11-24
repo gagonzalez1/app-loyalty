@@ -44,15 +44,19 @@ type MediaStore interface {
 }
 
 type Service struct {
-	Challenge         *challenge.Manager
-	Repo              *repository.Repository
-	Tokens            *auth.Tokens
-	Config            config.Config
-	Now               func() time.Time
-	Media             MediaStore
-	VerifyGoogleToken func(context.Context, string) (auth.GoogleIdentity, error)
-	Billing           BillingProvider
-	Places            ReviewPlaces
+	Challenge                *challenge.Manager
+	Repo                     *repository.Repository
+	Tokens                   *auth.Tokens
+	Config                   config.Config
+	Now                      func() time.Time
+	Media                    MediaStore
+	VerifyGoogleBrowserToken func(context.Context, string, string, []byte) error
+	VerifyGoogleToken        func(context.Context, string) (auth.GoogleIdentity, error)
+	Billing                  BillingProvider
+	Places                   ReviewPlaces
+	AppleIdentity            AppleIdentityProvider
+	AppleBilling             AppleBillingProvider
+	AppleBrowser             AppleIdentityProvider
 }
 
 type BillingProvider interface {
@@ -62,7 +66,7 @@ type BillingProvider interface {
 }
 
 func New(repo *repository.Repository, tokens *auth.Tokens, cfg config.Config, media ...MediaStore) *Service {
-	s := &Service{Repo: repo, Tokens: tokens, Config: cfg, Now: time.Now, VerifyGoogleToken: auth.VerifyGoogleIdentity, Places: places.New(cfg.GooglePlacesAPIKey)}
+	s := &Service{Repo: repo, Tokens: tokens, Config: cfg, Now: time.Now, VerifyGoogleToken: auth.VerifyGoogleIdentity, VerifyGoogleBrowserToken: auth.VerifyGoogleBrowserToken, Places: places.New(cfg.GooglePlacesAPIKey)}
 	if len(media) > 0 {
 		s.Media = media[0]
 	}

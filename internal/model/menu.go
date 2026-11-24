@@ -2,6 +2,13 @@ package model
 
 import "time"
 
+type MenuLanguage string
+
+const (
+	MenuSpanish MenuLanguage = "es"
+	MenuEnglish MenuLanguage = "en"
+)
+
 type MenuDocument struct {
 	ID           string    `json:"id"`
 	FileName     string    `json:"file_name"`

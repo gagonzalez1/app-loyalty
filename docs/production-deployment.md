@@ -185,3 +185,12 @@ aplica migraciones, no aprueba funcionalidades ni habilita producción.
 Al instalar el controlador, copiar la versión revisada de este PR; una copia
 anterior no conoce estos hashes. Los archivos aplicados siguen sujetos al
 ledger de hashes y al ensayo con respaldo antes de cada migración real.
+
+## Historial divergente de Apple en testing
+
+La operación `reconcile-testing-apple-0045` es un mantenimiento explícito de
+**testing**, separado del release productivo automático. Ver el procedimiento,
+precondiciones y auditoría en [`migrations/README.md`](../migrations/README.md#0051--auditoría-y-reconciliación-de-apple-0045-en-testing).
+El release productivo desde 0044 aplica normalmente 0045–0051; este comando no
+se invoca desde Actions ni desde hooks de Coolify. No activar la API candidata
+contra testing 0049 sin completar y verificar primero la reconciliación.

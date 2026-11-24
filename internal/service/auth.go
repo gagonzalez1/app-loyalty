@@ -182,7 +182,7 @@ func (s *Service) LoginGoogle(ctx context.Context, req model.GoogleAuthRequest) 
 		err = retryRegistration(ctx, func() error {
 			location := model.BranchRegistrationLocation{
 				BranchAddress: registration.BranchAddress, BranchLocality: registration.BranchLocality, BranchProvince: registration.BranchProvince,
-				BranchPostalCode: registration.BranchPostalCode, BranchLatitude: registration.BranchLatitude, BranchLongitude: registration.BranchLongitude,
+				BranchPostalCode: registration.BranchPostalCode, BranchLatitude: registration.BranchLatitude, BranchLongitude: registration.BranchLongitude, PublicProfile: registration.PublicProfile,
 			}
 			u, err = s.Repo.CreateGoogleMerchant(ctx, googleID, email, name, lastName, registration.BrandName, registration.BranchName, location, registration.ProgramType, registration.ReferralCode)
 			return err
@@ -218,7 +218,7 @@ func (s *Service) validateGoogleMerchant(registration *model.GoogleMerchantRegis
 	}
 	location := model.BranchRegistrationLocation{
 		BranchAddress: registration.BranchAddress, BranchLocality: registration.BranchLocality, BranchProvince: registration.BranchProvince,
-		BranchPostalCode: registration.BranchPostalCode, BranchLatitude: registration.BranchLatitude, BranchLongitude: registration.BranchLongitude,
+		BranchPostalCode: registration.BranchPostalCode, BranchLatitude: registration.BranchLatitude, BranchLongitude: registration.BranchLongitude, PublicProfile: registration.PublicProfile,
 	}
 	if err = cleanRegistrationBranchLocation(&location); err != nil {
 		return model.GoogleMerchantRegistration{}, err
@@ -230,7 +230,7 @@ func (s *Service) validateGoogleMerchant(registration *model.GoogleMerchantRegis
 	return model.GoogleMerchantRegistration{
 		BrandName: brand, BranchName: branch, BranchAddress: location.BranchAddress, BranchLocality: location.BranchLocality,
 		BranchProvince: location.BranchProvince, BranchPostalCode: location.BranchPostalCode, BranchLatitude: location.BranchLatitude,
-		BranchLongitude: location.BranchLongitude, ProgramType: programType, ReferralCode: strings.ToUpper(strings.TrimSpace(registration.ReferralCode)),
+		BranchLongitude: location.BranchLongitude, PublicProfile: location.PublicProfile, ProgramType: programType, ReferralCode: strings.ToUpper(strings.TrimSpace(registration.ReferralCode)),
 	}, nil
 }
 

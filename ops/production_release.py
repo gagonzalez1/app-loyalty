@@ -40,6 +40,7 @@ REVIEWED_EXPAND_MIGRATIONS = {
     '0041_branch_pdf_menus.up.sql': 'c4b15a70312b10e4b9856e78f05a42ffdd969274cd2f91bd5878236608de0663',
     '0042_branch_pdf_30mib.up.sql': 'a4da4fd212f2a23c3020f6daebc7e7d18a0bdec0e00a8420ce0c31c240ee2db9',
     '0043_email_verification_codes.up.sql': 'e313e80e80c0b5f5b8395b8ef4d08b24ee2b7b3fa21ef74b51d87b0a840f8ec2',
+    '0052_gift_cards.up.sql': 'a988f7eaf5470d88641e0e4b16ecb846db810edb63f8de96d8861ed015892e43',
 }
 
 

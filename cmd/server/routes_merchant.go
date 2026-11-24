@@ -7,6 +7,9 @@ import (
 )
 
 func registerMerchantRoutes(r *gin.RouterGroup, h *handler.Handler) {
+	r.GET("/marcas/:brand_id/gift-cards", h.GiftCardBatches)
+	r.POST("/marcas/:brand_id/gift-cards", h.CreateGiftCardBatch)
+	r.POST("/marcas/:brand_id/gift-cards/:batch_id/revocar", h.RevokeGiftCardBatch)
 	r.GET("/marcas/:brand_id/sucursales/:resource_id/menu", h.BranchMenu)
 	r.POST("/marcas/:brand_id/sucursales/:resource_id/menu/documentos", h.UploadMenuDocument)
 	r.PUT("/marcas/:brand_id/sucursales/:resource_id/menu/publicacion", h.PublishBranchMenu)
@@ -55,6 +58,10 @@ func registerMerchantRoutes(r *gin.RouterGroup, h *handler.Handler) {
 	r.PATCH("/marcas/:brand_id/personal/:membership_id", h.UpdateStaff)
 	r.DELETE("/marcas/:brand_id/personal/:membership_id", h.DeleteStaff)
 	r.GET("/marcas/:brand_id/suscripcion", h.Subscription)
+	r.GET("/marcas/:brand_id/billing", h.BillingState)
+	r.GET("/marcas/:brand_id/billing/apple/catalog", h.AppleCatalog)
+	r.POST("/marcas/:brand_id/billing/apple/intents", h.CreateAppleIntent)
+	r.POST("/marcas/:brand_id/billing/apple/sync", h.SyncAppleBilling)
 	r.GET("/marcas/:brand_id/referidos/codigos", h.MerchantReferralCodes)
 	r.POST("/marcas/:brand_id/suscripcion/checkout", h.CreateSubscriptionCheckout)
 	r.GET("/suscripciones/:provider_subscription_id/resultado", h.SubscriptionResult)

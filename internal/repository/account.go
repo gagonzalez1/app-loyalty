@@ -141,6 +141,14 @@ func (r *Repository) ExportAccount(ctx context.Context, id int64) (model.Account
 		return model.AccountExport{}, err
 	}
 	rows.Close()
+	var apple model.AppleIdentityExport
+	err = tx.QueryRow(ctx, `SELECT subject,email::text,private_relay,created_at FROM apple_identities WHERE usuario_id=$1`, id).Scan(&apple.Subject, &apple.Email, &apple.PrivateRelay, &apple.LinkedAt)
+	if err != nil && err != pgx.ErrNoRows {
+		return model.AccountExport{}, err
+	}
+	if err == nil {
+		out.AppleIdentity = &apple
+	}
 	if err = tx.Commit(ctx); err != nil {
 		return model.AccountExport{}, err
 	}
@@ -215,6 +223,9 @@ func (r *Repository) AnonymizeAccount(ctx context.Context, id int64, expectedVer
 	}
 	var deletedAt time.Time
 	if err = tx.QueryRow(ctx, `SELECT now()`).Scan(&deletedAt); err != nil {
+		return time.Time{}, err
+	}
+	if err = queueAppleIdentityDeletion(ctx, tx, id, deletedAt); err != nil {
 		return time.Time{}, err
 	}
 	for _, statement := range []string{

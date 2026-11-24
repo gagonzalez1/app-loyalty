@@ -183,7 +183,7 @@ func TestPostgresCustomerStores(t *testing.T) {
 		t.Fatal(err)
 	}
 	items, err = repo.ListCustomerStoreLocations(ctx, customer, "Centro")
-	if err != nil || len(items) != 1 || len(items[0].Benefits) != 1 || items[0].Benefits[0].Name != "Real" {
+	if err != nil || len(items) != 1 || len(items[0].Benefits) != 1 || items[0].Benefits[0].Name != "Real" || items[0].Benefits[0].RequiredStamps == nil || *items[0].Benefits[0].RequiredStamps != 3 || items[0].Benefits[0].RequiredPoints != nil {
 		t.Fatalf("benefits=%+v err=%v", items, err)
 	}
 	// HTTP envelope and optional parameters match the frontend contract.
