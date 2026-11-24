@@ -294,3 +294,14 @@ acredita puntos o sellos y registra el movimiento en una única transacción.
 Aplicar después de la reconciliación 0051 y publicar la API con
 `EXPECTED_SCHEMA_VERSION=0052`. El DOWN elimina las tablas de Gift Cards y sólo
 debe utilizarse cuando no sea necesario conservar lotes, códigos ni canjes.
+
+### 0053 · Estadísticas y reimpresión segura de Gift Cards
+
+Agrega almacenamiento cifrado del token de los nuevos QR para permitir que el
+comercio vuelva a descargar únicamente códigos todavía disponibles. El token
+continúa protegido por hash para el canje y se cifra con la clave de aplicación
+para su recuperación autorizada. Los lotes anteriores mantienen sus métricas y
+datos de canje, pero sus tokens históricos no pueden reconstruirse.
+
+El detalle autenticado del lote muestra fecha y cliente de cada canje.
+Configurar `EXPECTED_SCHEMA_VERSION=0053` después de aplicar la migración.

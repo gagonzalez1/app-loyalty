@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -43,7 +44,11 @@ func (r *Repository) CreateGiftCardBatch(ctx context.Context, actorID, brandID i
 	}
 	codes := make([]model.GiftCardCode, 0, len(tokens))
 	for _, token := range tokens {
-		_, err = tx.Exec(ctx, `INSERT INTO gift_card_codes(id,batch_id,token_hash,token_hint) VALUES($1,$2,$3,$4)`, token.ID, id, token.Hash[:], token.Hint)
+		ciphertext, nonce, encryptErr := encryptOutboxToken(token.Token, "gift-card:"+token.ID, r.OutboxCipherKey)
+		if encryptErr != nil {
+			return model.GiftCardBatch{}, encryptErr
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO gift_card_codes(id,batch_id,token_hash,token_hint,token_ciphertext,token_nonce) VALUES($1,$2,$3,$4,$5,$6)`, token.ID, id, token.Hash[:], token.Hint, ciphertext, nonce)
 		if err != nil {
 			return model.GiftCardBatch{}, err
 		}
@@ -53,6 +58,61 @@ func (r *Repository) CreateGiftCardBatch(ctx context.Context, actorID, brandID i
 		return model.GiftCardBatch{}, normalize(err)
 	}
 	return model.GiftCardBatch{ID: id.String(), BrandID: brandID, BrandName: brandName, BranchID: req.BranchID, BranchName: branchName, Title: strings.TrimSpace(req.Title), ProgramType: programType, Amount: req.Amount, Quantity: req.Quantity, Status: "ACTIVA", ExpiresAt: req.ExpiresAt, CreatedAt: now, Codes: codes}, nil
+}
+
+func (r *Repository) GiftCardBatch(ctx context.Context, actorID, brandID int64, batchID, claimBase string) (model.GiftCardBatch, error) {
+	var batch model.GiftCardBatch
+	err := r.Pool.QueryRow(ctx, `SELECT b.id,b.marca_id,m.nombre,b.sucursal_id,s.nombre,b.titulo,b.programa_tipo,b.cantidad,b.total_codigos,count(c.redeemed_at),b.estado,b.expires_at,b.created_at
+		FROM gift_card_batches b
+		JOIN marcas m ON m.id=b.marca_id
+		JOIN sucursales s ON s.id=b.sucursal_id
+		JOIN membresias_marca mm ON mm.marca_id=b.marca_id AND mm.usuario_id=$1 AND mm.activo
+		LEFT JOIN gift_card_codes c ON c.batch_id=b.id
+		WHERE b.marca_id=$2 AND b.id=$3
+		GROUP BY b.id,m.nombre,s.nombre`, actorID, brandID, batchID).
+		Scan(&batch.ID, &batch.BrandID, &batch.BrandName, &batch.BranchID, &batch.BranchName, &batch.Title, &batch.ProgramType, &batch.Amount, &batch.Quantity, &batch.RedeemedCount, &batch.Status, &batch.ExpiresAt, &batch.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return batch, ErrNotFound
+	}
+	if err != nil {
+		return batch, err
+	}
+
+	rows, err := r.Pool.Query(ctx, `SELECT gc.id,gc.token_hint,gc.redeemed_at,gc.token_ciphertext,gc.token_nonce,
+		COALESCE(u.codigo_usuario,'#USER-'||lpad(u.id::text,greatest(4,length(u.id::text)),'0')),
+		btrim(concat_ws(' ',u.nombre,u.apellido)),u.email::text
+		FROM gift_card_codes gc
+		LEFT JOIN usuarios u ON u.id=gc.redeemed_by
+		WHERE gc.batch_id=$1
+		ORDER BY gc.created_at,gc.id`, batchID)
+	if err != nil {
+		return batch, err
+	}
+	defer rows.Close()
+	batch.Codes = make([]model.GiftCardCode, 0, batch.Quantity)
+	printable := batch.Status == "ACTIVA" && (batch.ExpiresAt == nil || r.Now().UTC().Before(*batch.ExpiresAt))
+	for rows.Next() {
+		var code model.GiftCardCode
+		var ciphertext, nonce []byte
+		var userCode, name, email *string
+		if err = rows.Scan(&code.ID, &code.TokenHint, &code.RedeemedAt, &ciphertext, &nonce, &userCode, &name, &email); err != nil {
+			return batch, err
+		}
+		code.Redeemed = code.RedeemedAt != nil
+		if code.Redeemed {
+			if userCode != nil && name != nil && email != nil {
+				code.Redeemer = &model.GiftCardRedeemer{UserCode: *userCode, Name: *name, Email: *email}
+			}
+		} else if printable && len(ciphertext) > 0 && len(nonce) > 0 {
+			token, decryptErr := DecryptOutboxToken(model.OutboxEmail{ID: "gift-card:" + code.ID, Ciphertext: ciphertext, Nonce: nonce}, r.OutboxCipherKey)
+			if decryptErr != nil {
+				return batch, fmt.Errorf("decrypt gift card token: %w", decryptErr)
+			}
+			code.ClaimURL = strings.TrimRight(claimBase, "/") + "/gift-card/" + token
+		}
+		batch.Codes = append(batch.Codes, code)
+	}
+	return batch, rows.Err()
 }
 
 func (r *Repository) ListGiftCardBatches(ctx context.Context, actorID, brandID int64) ([]model.GiftCardBatch, error) {
