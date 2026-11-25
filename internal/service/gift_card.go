@@ -56,6 +56,13 @@ func (s *Service) RevokeGiftCardBatch(ctx context.Context, actorID, brandID int6
 	return s.Repo.RevokeGiftCardBatch(ctx, actorID, brandID, batchID)
 }
 
+func (s *Service) DeleteGiftCardBatch(ctx context.Context, actorID, brandID int64, batchID string) error {
+	if _, err := uuid.Parse(batchID); err != nil {
+		return ErrInvalidRequest
+	}
+	return s.Repo.DeleteGiftCardBatch(ctx, actorID, brandID, batchID)
+}
+
 func (s *Service) GiftCardClaim(ctx context.Context, token string) (model.GiftCardClaim, error) {
 	if !validGiftCardToken(token) {
 		return model.GiftCardClaim{}, ErrInvalidRequest

@@ -195,6 +195,11 @@ func (r *Repository) AnonymizeAccount(ctx context.Context, id int64, expectedVer
 			closedBrands = append(closedBrands, brandID)
 		}
 	}
+	// A checkout that never reached the provider can be cancelled locally. It
+	// must not leave a merchant permanently unable to close the account.
+	if _, err = tx.Exec(ctx, `UPDATE suscripciones_marca SET estado='CANCELLED',checkout_rejected=true,checkout_url=NULL,proximo_cobro_at=NULL,updated_at=now() WHERE marca_id=ANY($1) AND estado='CREATING' AND proveedor_suscripcion_id IS NULL AND provider_call_started_at IS NULL`, closedBrands); err != nil {
+		return time.Time{}, err
+	}
 	rows, err = tx.Query(ctx, `SELECT marca_id,estado,COALESCE(proveedor_suscripcion_id,''),referencia_externa
 		FROM suscripciones_marca WHERE marca_id=ANY($1) AND estado<>'CANCELLED' ORDER BY marca_id FOR UPDATE`, closedBrands)
 	if err != nil {

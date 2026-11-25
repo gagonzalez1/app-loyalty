@@ -97,6 +97,7 @@ func TestRouteInventoryAndAuthentication(t *testing.T) {
 		{"GET", "/v1/marcas/:brand_id/gift-cards", "/v1/marcas/1/gift-cards"},
 		{"POST", "/v1/marcas/:brand_id/gift-cards", "/v1/marcas/1/gift-cards"},
 		{"GET", "/v1/marcas/:brand_id/gift-cards/:batch_id", "/v1/marcas/1/gift-cards/00000000-0000-4000-8000-000000000001"},
+		{"DELETE", "/v1/marcas/:brand_id/gift-cards/:batch_id", "/v1/marcas/1/gift-cards/00000000-0000-4000-8000-000000000001"},
 		{"POST", "/v1/marcas/:brand_id/gift-cards/:batch_id/revocar", "/v1/marcas/1/gift-cards/00000000-0000-4000-8000-000000000001/revocar"},
 		{"PATCH", "/v1/marcas/:brand_id", "/v1/marcas/1"},
 		{"DELETE", "/v1/marcas/:brand_id", "/v1/marcas/1"},

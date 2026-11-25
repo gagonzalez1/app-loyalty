@@ -70,9 +70,12 @@ func reconcileTestingApple0045(ctx context.Context, pool *pgxpool.Pool, appEnv s
 	if err != nil {
 		return err
 	}
-	completed := slices.Equal(versions, after)
+	// A reconciled testing database may already contain later, contiguous
+	// migrations. The bridge still validates the immutable 0051 prefix and its
+	// provenance instead of rejecting every forward schema release.
+	completed := len(versions) >= len(after) && slices.Equal(versions[:len(after)], after)
 	if !completed && !slices.Equal(versions, before) {
-		return fmt.Errorf("reconciliation supports the complete testing 0049 history or its audited 0051 result only")
+		return fmt.Errorf("reconciliation supports the complete testing 0049 history or an audited 0051-or-later result only")
 	}
 	var history string
 	if err = tx.QueryRow(ctx, `SELECT jsonb_agg(to_jsonb(m) ORDER BY version)::text FROM schema_migrations m WHERE version<='0049'`).Scan(&history); err != nil {

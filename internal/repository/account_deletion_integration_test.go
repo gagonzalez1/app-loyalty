@@ -191,6 +191,7 @@ func TestPostgresAccountDeletion(t *testing.T) {
 		providerErr, errorWant error
 		calls                  int
 		deleted                bool
+		providerCallStarted    bool
 	}{
 		{name: "last owner without subscription", deleted: true},
 		{name: "last owner canceled subscription", status: "CANCELLED", deleted: true},
@@ -198,10 +199,16 @@ func TestPostgresAccountDeletion(t *testing.T) {
 		{name: "provider failure rolls back", status: "AUTHORIZED", billing: true, providerErr: errors.New("provider unavailable"), errorWant: service.ErrBillingProviderFailure, calls: 1},
 		{name: "provider fails to confirm cancellation", status: "AUTHORIZED", billing: true, providerStatus: "authorized", errorWant: service.ErrBillingProviderFailure, calls: 1},
 		{name: "billing disabled rolls back", status: "AUTHORIZED", errorWant: service.ErrBillingUnavailable},
-		{name: "unresolved checkout rolls back", status: "CREATING", billing: true, errorWant: service.ErrBillingInProgress},
+		{name: "abandoned checkout closes locally", status: "CREATING", deleted: true},
+		{name: "provider checkout in progress rolls back", status: "CREATING", billing: true, providerCallStarted: true, errorWant: service.ErrBillingInProgress},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := accountDeletionFixture(t, pool, tc.status)
+			if tc.providerCallStarted {
+				if _, err := pool.Exec(t.Context(), `UPDATE suscripciones_marca SET provider_call_started_at=now() WHERE marca_id=$1`, f.brand); err != nil {
+					t.Fatal(err)
+				}
+			}
 			f.provider.status = tc.providerStatus
 			f.provider.err = tc.providerErr
 			svc := service.New(repo, nil, config.Config{})

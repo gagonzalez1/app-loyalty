@@ -305,3 +305,10 @@ datos de canje, pero sus tokens históricos no pueden reconstruirse.
 
 El detalle autenticado del lote muestra fecha y cliente de cada canje.
 Configurar `EXPECTED_SCHEMA_VERSION=0053` después de aplicar la migración.
+
+### 0054 · Baja segura de lotes de Gift Cards
+
+Agrega una baja lógica a los lotes. El comercio puede retirarlos de su lista y
+los QR pendientes dejan de estar disponibles, mientras los canjes y movimientos
+ya realizados se conservan para auditoría. Publicar la API con
+`EXPECTED_SCHEMA_VERSION=0054` después de aplicar 0053 y 0054.

@@ -102,6 +102,27 @@ func (h *Handler) RevokeGiftCardBatch(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+func (h *Handler) DeleteGiftCardBatch(c *gin.Context) {
+	a, ok := actor(c)
+	if !ok {
+		return
+	}
+	if a.AccountType != "PERSONAL_MARCA" {
+		writeErr(c, service.ErrForbidden)
+		return
+	}
+	brandID, err := positiveID(c.Param("brand_id"))
+	if err != nil {
+		writeErr(c, service.ErrInvalidRequest)
+		return
+	}
+	if err = h.Service.DeleteGiftCardBatch(c.Request.Context(), a.ID, brandID, c.Param("batch_id")); err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func (h *Handler) PublicGiftCardClaim(c *gin.Context) {
 	data, err := h.Service.GiftCardClaim(c.Request.Context(), c.Param("token"))
 	if err != nil {
