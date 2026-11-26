@@ -153,6 +153,9 @@ func TestReconcileTestingApple0045PreservesDataHistoryAndOIDs(t *testing.T) {
 	if err != nil || beforeWithoutNew != before {
 		t.Fatal("original data, timestamp or OID changed", err)
 	}
+	if err := run(t.Context(), p, "up", "../../migrations"); err != nil {
+		t.Fatal("initial up after bridge", err)
+	}
 	after := fixtureState(t, p)
 	for range 2 {
 		if err := reconcileTestingApple0045(t.Context(), p, "testing"); err != nil {
@@ -172,6 +175,11 @@ func TestReconcileTestingApple0045PreservesDataHistoryAndOIDs(t *testing.T) {
 		}
 	}
 	t.Setenv("ALLOW_MIGRATION_DOWN", "true")
+	for _, version := range []string{"0054", "0053", "0052"} {
+		if err := run(t.Context(), p, "down", "../../migrations"); err != nil {
+			t.Fatalf("down %s before reconciliation boundary: %v", version, err)
+		}
+	}
 	if err := run(t.Context(), p, "down", "../../migrations"); err == nil {
 		t.Fatal("down discarded reconciliation provenance")
 	}
@@ -224,7 +232,7 @@ func TestReconcileTestingApple0045EnvironmentAndCanonicalUpgrade(t *testing.T) {
 	if err := run(t.Context(), p, "up", "../../migrations"); err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.New(p).CheckSchema(t.Context(), "0051"); err != nil {
+	if err := repository.New(p).CheckSchema(t.Context(), "0054"); err != nil {
 		t.Fatal(err)
 	}
 	var n int
@@ -270,7 +278,7 @@ func TestReconcileTestingApple0045EmptyDatabaseUpgrade(t *testing.T) {
 	if err := run(t.Context(), p, "up", "../../migrations"); err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.New(p).CheckSchema(t.Context(), "0051"); err != nil {
+	if err := repository.New(p).CheckSchema(t.Context(), "0054"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := migrations.ReadSource("0051_schema_reconciliation_log.up.sql"); err != nil {

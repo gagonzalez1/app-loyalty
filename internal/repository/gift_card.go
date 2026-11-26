@@ -68,7 +68,7 @@ func (r *Repository) GiftCardBatch(ctx context.Context, actorID, brandID int64, 
 		JOIN sucursales s ON s.id=b.sucursal_id
 		JOIN membresias_marca mm ON mm.marca_id=b.marca_id AND mm.usuario_id=$1 AND mm.activo
 		LEFT JOIN gift_card_codes c ON c.batch_id=b.id
-		WHERE b.marca_id=$2 AND b.id=$3
+		WHERE b.marca_id=$2 AND b.id=$3 AND b.deleted_at IS NULL
 		GROUP BY b.id,m.nombre,s.nombre`, actorID, brandID, batchID).
 		Scan(&batch.ID, &batch.BrandID, &batch.BrandName, &batch.BranchID, &batch.BranchName, &batch.Title, &batch.ProgramType, &batch.Amount, &batch.Quantity, &batch.RedeemedCount, &batch.Status, &batch.ExpiresAt, &batch.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -116,7 +116,7 @@ func (r *Repository) GiftCardBatch(ctx context.Context, actorID, brandID int64, 
 }
 
 func (r *Repository) ListGiftCardBatches(ctx context.Context, actorID, brandID int64) ([]model.GiftCardBatch, error) {
-	rows, err := r.Pool.Query(ctx, `SELECT b.id,b.marca_id,m.nombre,b.sucursal_id,s.nombre,b.titulo,b.programa_tipo,b.cantidad,b.total_codigos,count(c.redeemed_at),b.estado,b.expires_at,b.created_at FROM gift_card_batches b JOIN marcas m ON m.id=b.marca_id JOIN sucursales s ON s.id=b.sucursal_id JOIN membresias_marca mm ON mm.marca_id=b.marca_id AND mm.usuario_id=$1 AND mm.activo LEFT JOIN gift_card_codes c ON c.batch_id=b.id WHERE b.marca_id=$2 GROUP BY b.id,m.nombre,s.nombre ORDER BY b.created_at DESC`, actorID, brandID)
+	rows, err := r.Pool.Query(ctx, `SELECT b.id,b.marca_id,m.nombre,b.sucursal_id,s.nombre,b.titulo,b.programa_tipo,b.cantidad,b.total_codigos,count(c.redeemed_at),b.estado,b.expires_at,b.created_at FROM gift_card_batches b JOIN marcas m ON m.id=b.marca_id JOIN sucursales s ON s.id=b.sucursal_id JOIN membresias_marca mm ON mm.marca_id=b.marca_id AND mm.usuario_id=$1 AND mm.activo LEFT JOIN gift_card_codes c ON c.batch_id=b.id WHERE b.marca_id=$2 AND b.deleted_at IS NULL GROUP BY b.id,m.nombre,s.nombre ORDER BY b.created_at DESC`, actorID, brandID)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +133,18 @@ func (r *Repository) ListGiftCardBatches(ctx context.Context, actorID, brandID i
 }
 
 func (r *Repository) RevokeGiftCardBatch(ctx context.Context, actorID, brandID int64, batchID string) error {
-	tag, err := r.Pool.Exec(ctx, `UPDATE gift_card_batches b SET estado='REVOCADA' FROM membresias_marca mm WHERE b.id=$1 AND b.marca_id=$2 AND mm.marca_id=b.marca_id AND mm.usuario_id=$3 AND mm.activo AND mm.rol IN ('PROPIETARIO','ADMINISTRADOR')`, batchID, brandID, actorID)
+	tag, err := r.Pool.Exec(ctx, `UPDATE gift_card_batches b SET estado='REVOCADA' FROM membresias_marca mm WHERE b.id=$1 AND b.marca_id=$2 AND b.deleted_at IS NULL AND mm.marca_id=b.marca_id AND mm.usuario_id=$3 AND mm.activo AND mm.rol IN ('PROPIETARIO','ADMINISTRADOR')`, batchID, brandID, actorID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *Repository) DeleteGiftCardBatch(ctx context.Context, actorID, brandID int64, batchID string) error {
+	tag, err := r.Pool.Exec(ctx, `UPDATE gift_card_batches b SET estado='REVOCADA',deleted_at=now() FROM membresias_marca mm WHERE b.id=$1 AND b.marca_id=$2 AND b.deleted_at IS NULL AND mm.marca_id=b.marca_id AND mm.usuario_id=$3 AND mm.activo AND mm.rol IN ('PROPIETARIO','ADMINISTRADOR')`, batchID, brandID, actorID)
 	if err != nil {
 		return err
 	}
@@ -146,7 +157,7 @@ func (r *Repository) RevokeGiftCardBatch(ctx context.Context, actorID, brandID i
 func (r *Repository) GiftCardClaim(ctx context.Context, token string) (model.GiftCardClaim, error) {
 	h := GiftCardHash(token)
 	var c model.GiftCardClaim
-	err := r.Pool.QueryRow(ctx, `SELECT m.nombre,s.nombre,b.titulo,b.programa_tipo,b.cantidad,b.expires_at,(gc.redeemed_at IS NOT NULL) FROM gift_card_codes gc JOIN gift_card_batches b ON b.id=gc.batch_id JOIN marcas m ON m.id=b.marca_id JOIN sucursales s ON s.id=b.sucursal_id WHERE gc.token_hash=$1 AND b.estado='ACTIVA'`, h[:]).Scan(&c.BrandName, &c.BranchName, &c.Title, &c.ProgramType, &c.Amount, &c.ExpiresAt, &c.Redeemed)
+	err := r.Pool.QueryRow(ctx, `SELECT m.nombre,s.nombre,b.titulo,b.programa_tipo,b.cantidad,b.expires_at,(gc.redeemed_at IS NOT NULL) FROM gift_card_codes gc JOIN gift_card_batches b ON b.id=gc.batch_id JOIN marcas m ON m.id=b.marca_id JOIN sucursales s ON s.id=b.sucursal_id WHERE gc.token_hash=$1 AND b.estado='ACTIVA' AND b.deleted_at IS NULL`, h[:]).Scan(&c.BrandName, &c.BranchName, &c.Title, &c.ProgramType, &c.Amount, &c.ExpiresAt, &c.Redeemed)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return c, ErrNotFound
 	}
@@ -170,7 +181,7 @@ func (r *Repository) RedeemGiftCard(ctx context.Context, customerID int64, token
 	var brandID, branchID, programID, amount int64
 	var title, programType, brandName, branchName, status string
 	var expires, redeemed *time.Time
-	err = tx.QueryRow(ctx, `SELECT gc.id,gc.batch_id,b.marca_id,b.sucursal_id,b.programa_id,b.cantidad,b.titulo,b.programa_tipo,m.nombre,s.nombre,b.estado,b.expires_at,gc.redeemed_at FROM gift_card_codes gc JOIN gift_card_batches b ON b.id=gc.batch_id JOIN marcas m ON m.id=b.marca_id AND m.activo JOIN sucursales s ON s.id=b.sucursal_id AND s.activo JOIN programas_fidelidad p ON p.id=b.programa_id AND p.activo WHERE gc.token_hash=$1 FOR UPDATE OF gc`, h[:]).Scan(&codeID, &batchID, &brandID, &branchID, &programID, &amount, &title, &programType, &brandName, &branchName, &status, &expires, &redeemed)
+	err = tx.QueryRow(ctx, `SELECT gc.id,gc.batch_id,b.marca_id,b.sucursal_id,b.programa_id,b.cantidad,b.titulo,b.programa_tipo,m.nombre,s.nombre,b.estado,b.expires_at,gc.redeemed_at FROM gift_card_codes gc JOIN gift_card_batches b ON b.id=gc.batch_id JOIN marcas m ON m.id=b.marca_id AND m.activo JOIN sucursales s ON s.id=b.sucursal_id AND s.activo JOIN programas_fidelidad p ON p.id=b.programa_id AND p.activo WHERE gc.token_hash=$1 AND b.deleted_at IS NULL FOR UPDATE OF gc,b`, h[:]).Scan(&codeID, &batchID, &brandID, &branchID, &programID, &amount, &title, &programType, &brandName, &branchName, &status, &expires, &redeemed)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return model.GiftCardRedemption{}, ErrNotFound
 	}
@@ -230,7 +241,7 @@ func (r *Repository) RedeemGiftCard(ctx context.Context, customerID int64, token
 	movement.Amount = amount
 	movement.BalanceBefore = before
 	movement.BalanceAfter = after
-	if _, err = tx.Exec(ctx, `SELECT pg_notify('puntazo_customer_cards',$1)`, customerID); err != nil {
+	if _, err = tx.Exec(ctx, `SELECT pg_notify('puntazo_customer_cards',$1::bigint::text)`, customerID); err != nil {
 		return model.GiftCardRedemption{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {
