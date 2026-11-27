@@ -2,8 +2,9 @@ package model
 
 // BranchPublicProfile contains only information a merchant chooses to publish.
 type BranchPublicProfile struct {
-	Hours []BranchHoursSlot `json:"horarios,omitempty"`
-	Links map[string]string `json:"enlaces,omitempty"`
+	WhatsApp string            `json:"whatsapp,omitempty"`
+	Hours    []BranchHoursSlot `json:"horarios,omitempty"`
+	Links    map[string]string `json:"enlaces,omitempty"`
 }
 
 // Days use 0 for Monday through 6 for Sunday. A closing time before the

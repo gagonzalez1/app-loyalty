@@ -64,6 +64,112 @@ paths:
               schema: { type: string, format: binary }
         '404':
           description: Imagen fuera de la lista permitida
+  /tiendas/{branch_id}:
+    get:
+      tags: [Clientes]
+      operationId: getPublicStore
+      x-puntazo-implementation: IMPLEMENTED
+      summary: Ficha pública de una sucursal activa
+      security: []
+      parameters:
+        - { name: branch_id, in: path, required: true, schema: { type: integer, format: int64, minimum: 1 } }
+      responses:
+        '200':
+          description: Nombre, dirección y perfil comercial público
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  request_id: { type: string }
+                  data:
+                    type: object
+                    required: [branch_id, brand_name, branch_name]
+                    properties:
+                      branch_id: { type: integer, format: int64 }
+                      brand_name: { type: string }
+                      branch_name: { type: string }
+                      address: { type: string }
+                      localidad: { type: string }
+                      provincia: { type: string }
+                      perfil_publico: { $ref: '#/components/schemas/BranchPublicProfile' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /estudio/marcas/{brand_id}/sucursales/{resource_id}/autorizacion:
+    post:
+      tags: [Marcas]
+      operationId: createEstudioContactGrant
+      x-puntazo-implementation: IMPLEMENTED
+      summary: Delega el contacto de una sola sucursal a Estudio
+      description: El token dura dos horas, queda ligado a la sesión de Puntazo y requiere membresía activa. Propietarios y administradores pueden escribir. Operadores con acceso a la sucursal pueden leer el perfil.
+      parameters:
+        - { $ref: '#/components/parameters/BrandId' }
+        - { name: resource_id, in: path, required: true, schema: { type: integer, format: int64, minimum: 1 } }
+      responses:
+        '200':
+          description: Credencial delegada y versión vigente del contacto
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  request_id: { type: string }
+                  data:
+                    type: object
+                    required: [access_token, expires_at, contact]
+                    properties:
+                      access_token: { type: string }
+                      expires_at: { type: string, format: date-time }
+                      contact: { $ref: '#/components/schemas/EstudioContact' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /estudio/perfil:
+    get:
+      tags: [Marcas]
+      operationId: getEstudioContact
+      x-puntazo-implementation: IMPLEMENTED
+      summary: Consulta la ficha versionada de la sucursal delegada
+      security: [{ estudioContactBearer: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/EstudioContact' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Marcas]
+      operationId: patchEstudioContact
+      x-puntazo-implementation: IMPLEMENTED
+      summary: Cambia únicamente los datos de contacto incluidos
+      description: Los campos omitidos se conservan. Las cadenas vacías limpian los campos de texto; una lista vacía limpia los horarios. Se verifica el permiso actual en Puntazo.
+      security: [{ estudioContactBearer: [] }]
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          schema: { type: string, pattern: '^"[1-9][0-9]*"$' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              additionalProperties: false
+              properties:
+                address: { type: string, maxLength: 300 }
+                whatsapp: { type: string, pattern: '^(\+[1-9][0-9]{6,14})?$' }
+                instagram: { type: string }
+                tiktok: { type: string }
+                horarios:
+                  type: array
+                  maxItems: 28
+                  items: { $ref: '#/components/schemas/BranchHoursSlot' }
+      responses:
+        '200': { $ref: '#/components/responses/EstudioContact' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '403': { description: El actor ya no puede editar esa sucursal }
+        '412': { description: La versión cambió en otra sesión }
   /public/sucursales/{branch_id}/menu:
     get:
       tags: [Clientes]
@@ -2981,6 +3087,10 @@ paths:
         '503': { description: Proveedor Apple no configurado o no disponible }
 components:
   securitySchemes:
+    estudioContactBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
     backofficeCookie:
       type: apiKey
       in: cookie
@@ -3066,6 +3176,19 @@ components:
       description: Búsqueda parcial por nombre o email; coincidencia exacta por código público normalizado (GG-1, #gg-1 o #USER-0001) o ID numérico anterior del cliente
       schema: { type: string, maxLength: 120 }
   responses:
+    EstudioContact:
+      description: Datos y versión vigente de la sucursal delegada
+      headers:
+        ETag:
+          schema: { type: string }
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, request_id]
+            properties:
+              request_id: { type: string }
+              data: { $ref: '#/components/schemas/EstudioContact' }
     MenuPreconditionRequired:
       description: Falta If-Match; PRECONDITION_REQUIRED
       content:
@@ -4146,11 +4269,21 @@ components:
       format: uri
       pattern: '^[Hh][Tt][Tt][Pp][Ss]://'
       maxLength: 2048
+    EstudioContact:
+      type: object
+      required: [branch_id, version, address, can_write]
+      properties:
+        branch_id: { type: integer, format: int64 }
+        version: { type: integer, minimum: 1 }
+        address: { type: [string, 'null'] }
+        can_write: { type: boolean }
+        perfil_publico: { $ref: '#/components/schemas/BranchPublicProfile' }
     BranchPublicProfile:
       type: object
       additionalProperties: false
       description: Información pública opcional, cargada por el comercio para cada sucursal.
       properties:
+        whatsapp: { type: string, pattern: '^(\+[1-9][0-9]{6,14})?$' }
         horarios:
           type: array
           maxItems: 28

@@ -8,6 +8,7 @@ import (
 )
 
 func registerPublicRoutes(r *gin.RouterGroup, h *handler.Handler) {
+	r.GET("/tiendas/:branch_id", h.PublicStore)
 	r.GET("/public/gift-cards/:token", h.PublicGiftCardClaim)
 	r.GET("/public/sucursales/:branch_id/menu", h.PublicBranchMenu)
 	r.GET("/public/marcas/:brand_id/menus", h.PublicBrandMenus)

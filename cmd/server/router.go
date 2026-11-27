@@ -42,6 +42,9 @@ func newRouter(h *handler.Handler, tokens *auth.Tokens, logger *slog.Logger) *gi
 	rest.Use(middleware.Timeout(12 * time.Second))
 	v1 := rest.Group("/v1")
 	registerPublicRoutes(v1, h)
+	estudio := v1.Group("/estudio", h.RequireEstudioGrant, h.RequireAdult)
+	estudio.GET("/perfil", h.EstudioContact)
+	estudio.PATCH("/perfil", h.EstudioContact)
 	backoffice := v1.Group("/backoffice")
 	backoffice.Use(func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")

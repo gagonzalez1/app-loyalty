@@ -151,3 +151,15 @@ func (r *Repository) SetCustomerStoreFavorite(ctx context.Context, actorID, bran
 	}
 	return out, nil
 }
+
+func (r *Repository) PublicStore(ctx context.Context, branchID int64) (model.PublicStore, error) {
+	var store model.PublicStore
+	err := r.Pool.QueryRow(ctx, `SELECT s.id,m.nombre,s.nombre,s.direccion,s.localidad,s.provincia,s.perfil_publico
+		FROM sucursales s JOIN marcas m ON m.id=s.marca_id AND m.activo AND m.deleted_at IS NULL
+		WHERE s.id=$1 AND s.activo AND s.deleted_at IS NULL`, branchID).
+		Scan(&store.BranchID, &store.BrandName, &store.BranchName, &store.Address, &store.Locality, &store.Province, &store.PublicProfile)
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = ErrNotFound
+	}
+	return store, err
+}

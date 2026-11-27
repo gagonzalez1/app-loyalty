@@ -23,7 +23,7 @@ func TestRouteInventoryAndAuthentication(t *testing.T) {
 	public := []string{
 		"GET /v1/public/sucursales/:branch_id/menu", "GET /v1/public/marcas/:brand_id/menus",
 		"GET /v1/public/gift-cards/:token",
-		"GET /v1/email-assets/v1/:name", "GET /v1/suscripciones/precios", "GET /v1/health/live", "GET /v1/health/ready", "GET /v1/version",
+		"GET /v1/email-assets/v1/:name", "GET /v1/suscripciones/precios", "GET /v1/health/live", "GET /v1/health/ready", "GET /v1/version", "GET /v1/tiendas/:branch_id",
 		"GET /v1/auth/challenge", "POST /v1/auth/challenge/verify", "POST /v1/auth/logout", "POST /v1/auth/register", "POST /v1/auth/login", "POST /v1/auth/google", "POST /v1/auth/refresh", "POST /v1/demo/comercios",
 		"POST /v1/auth/email-verification/code/request", "POST /v1/auth/email-verification/code/confirm", "POST /v1/auth/email-verification/request", "POST /v1/auth/email-verification/confirm",
 		"POST /v1/auth/email-change/confirm",
@@ -92,6 +92,9 @@ func TestRouteInventoryAndAuthentication(t *testing.T) {
 		{"GET", "/v1/me/foto", "/v1/me/foto"},
 		{"POST", "/v1/me/foto", "/v1/me/foto"},
 		{"GET", "/me", "/me"},
+		{"GET", "/v1/estudio/perfil", "/v1/estudio/perfil"},
+		{"PATCH", "/v1/estudio/perfil", "/v1/estudio/perfil"},
+		{"POST", "/v1/estudio/marcas/:brand_id/sucursales/:resource_id/autorizacion", "/v1/estudio/marcas/1/sucursales/1/autorizacion"},
 		{"GET", "/v1/marcas", "/v1/marcas"},
 		{"GET", "/v1/marcas/:brand_id", "/v1/marcas/1"},
 		{"GET", "/v1/marcas/:brand_id/gift-cards", "/v1/marcas/1/gift-cards"},

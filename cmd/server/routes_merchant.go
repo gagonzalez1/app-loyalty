@@ -32,6 +32,7 @@ func registerMerchantRoutes(r *gin.RouterGroup, h *handler.Handler) {
 	r.GET("/marcas/:brand_id/sucursales/altas/:operation_id", h.BranchOperation)
 	r.POST("/marcas/:brand_id/sucursales/altas/:operation_id/simulacion", h.SimulateBranch)
 	r.GET("/marcas/:brand_id/sucursales/:resource_id", h.Branch)
+	r.POST("/estudio/marcas/:brand_id/sucursales/:resource_id/autorizacion", h.CreateEstudioGrant)
 	r.PATCH("/marcas/:brand_id/sucursales/:resource_id", h.UpdateBranch)
 	r.DELETE("/marcas/:brand_id/sucursales/:resource_id", h.DeleteBranch)
 	r.GET("/marcas/:brand_id/programa", h.Program)
