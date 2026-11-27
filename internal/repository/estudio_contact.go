@@ -59,7 +59,10 @@ func (r *Repository) UpdateEstudioContact(ctx context.Context, actor, brand, bra
 		current.PublicProfile.Hours = *patch.Hours
 	}
 	if patch.WhatsApp != nil {
-		current.PublicProfile.WhatsApp = *patch.WhatsApp
+		current.PublicProfile.WhatsApp = patch.WhatsApp
+		if *patch.WhatsApp == "" {
+			current.PublicProfile.WhatsApp = nil
+		}
 	}
 	for key, value := range map[string]*string{"instagram": patch.Instagram, "tiktok": patch.TikTok} {
 		if value == nil {

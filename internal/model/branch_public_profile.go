@@ -2,7 +2,7 @@ package model
 
 // BranchPublicProfile contains only information a merchant chooses to publish.
 type BranchPublicProfile struct {
-	WhatsApp string            `json:"whatsapp,omitempty"`
+	WhatsApp *string           `json:"whatsapp,omitempty"`
 	Hours    []BranchHoursSlot `json:"horarios,omitempty"`
 	Links    map[string]string `json:"enlaces,omitempty"`
 }

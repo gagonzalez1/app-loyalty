@@ -22,9 +22,12 @@ func cleanBranchPublicProfile(profile *model.BranchPublicProfile) error {
 	if profile == nil {
 		return nil
 	}
-	profile.WhatsApp = strings.TrimSpace(profile.WhatsApp)
-	if profile.WhatsApp != "" && !branchWhatsApp.MatchString(profile.WhatsApp) {
-		return ErrInvalidRequest
+	if profile.WhatsApp != nil {
+		clean := strings.TrimSpace(*profile.WhatsApp)
+		if clean != "" && !branchWhatsApp.MatchString(clean) {
+			return ErrInvalidRequest
+		}
+		profile.WhatsApp = &clean
 	}
 	if len(profile.Hours) > 28 || len(profile.Links) > 6 {
 		return ErrInvalidRequest

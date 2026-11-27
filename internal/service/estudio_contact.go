@@ -23,7 +23,7 @@ func (s *Service) UpdateEstudioContact(ctx context.Context, actor, brand, branch
 		profile.Hours = *patch.Hours
 	}
 	if patch.WhatsApp != nil {
-		profile.WhatsApp = *patch.WhatsApp
+		profile.WhatsApp = patch.WhatsApp
 	}
 	for key, value := range map[string]*string{"instagram": patch.Instagram, "tiktok": patch.TikTok} {
 		if value != nil {
@@ -34,7 +34,7 @@ func (s *Service) UpdateEstudioContact(ctx context.Context, actor, brand, branch
 		return model.EstudioContact{}, err
 	}
 	if patch.WhatsApp != nil {
-		*patch.WhatsApp = profile.WhatsApp
+		patch.WhatsApp = profile.WhatsApp
 	}
 	if patch.Instagram != nil {
 		*patch.Instagram = profile.Links["instagram"]

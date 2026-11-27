@@ -172,7 +172,12 @@ func (r *Repository) UpdateBranch(ctx context.Context, actorID, brandID, branchI
 			return model.Branch{}, err
 		}
 	}
-	tag, err := tx.Exec(ctx, `UPDATE sucursales SET nombre=$3,direccion=$4,localidad=$5,provincia=$6,codigo_postal=$7,latitud=$8,longitud=$9,principal=CASE WHEN $10 THEN $11 ELSE principal END,perfil_publico=COALESCE(NULLIF($13::jsonb,'null'::jsonb),perfil_publico),version=version+1,updated_at=now() WHERE id=$1 AND marca_id=$2 AND version=$12 AND activo`, branchID, brandID, req.Name, req.Address, req.Locality, req.Province, req.PostalCode, req.Latitude, req.Longitude, req.Primary != nil, req.Primary, version, req.PublicProfile)
+	tag, err := tx.Exec(ctx, `UPDATE sucursales SET nombre=$3,direccion=$4,localidad=$5,provincia=$6,codigo_postal=$7,latitud=$8,longitud=$9,principal=CASE WHEN $10 THEN $11 ELSE principal END,perfil_publico=CASE
+		WHEN NULLIF($13::jsonb,'null'::jsonb) IS NULL THEN perfil_publico
+		WHEN ($13::jsonb->>'whatsapp')='' THEN $13::jsonb-'whatsapp'
+		WHEN NOT ($13::jsonb ? 'whatsapp') AND perfil_publico ? 'whatsapp'
+			THEN jsonb_set($13::jsonb, '{whatsapp}', perfil_publico->'whatsapp')
+		ELSE $13::jsonb END,version=version+1,updated_at=now() WHERE id=$1 AND marca_id=$2 AND version=$12 AND activo`, branchID, brandID, req.Name, req.Address, req.Locality, req.Province, req.PostalCode, req.Latitude, req.Longitude, req.Primary != nil, req.Primary, version, req.PublicProfile)
 	if err != nil {
 		return model.Branch{}, err
 	}
