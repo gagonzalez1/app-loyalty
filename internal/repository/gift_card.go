@@ -29,16 +29,28 @@ func (r *Repository) CreateGiftCardBatch(ctx context.Context, actorID, brandID i
 	defer tx.Rollback(ctx)
 	var programID int64
 	var programType, brandName, branchName string
-	err = tx.QueryRow(ctx, `SELECT p.id,p.tipo,m.nombre,s.nombre FROM membresias_marca mm JOIN marcas m ON m.id=mm.marca_id AND m.activo JOIN programas_fidelidad p ON p.marca_id=m.id AND p.activo JOIN sucursales s ON s.id=$3 AND s.marca_id=m.id AND s.activo LEFT JOIN membresias_sucursales ms ON ms.membresia_id=mm.id AND ms.sucursal_id=s.id AND ms.activo WHERE mm.usuario_id=$1 AND mm.marca_id=$2 AND mm.activo AND (mm.rol IN ('PROPIETARIO','ADMINISTRADOR') OR ms.sucursal_id IS NOT NULL)`, actorID, brandID, req.BranchID).Scan(&programID, &programType, &brandName, &branchName)
+	var profile *model.BranchPublicProfile
+	err = tx.QueryRow(ctx, `SELECT p.id,p.tipo,m.nombre,s.nombre,s.perfil_publico FROM membresias_marca mm JOIN marcas m ON m.id=mm.marca_id AND m.activo JOIN programas_fidelidad p ON p.marca_id=m.id AND p.activo JOIN sucursales s ON s.id=$3 AND s.marca_id=m.id AND s.activo LEFT JOIN membresias_sucursales ms ON ms.membresia_id=mm.id AND ms.sucursal_id=s.id AND ms.activo WHERE mm.usuario_id=$1 AND mm.marca_id=$2 AND mm.activo AND (mm.rol IN ('PROPIETARIO','ADMINISTRADOR') OR ms.sucursal_id IS NOT NULL)`, actorID, brandID, req.BranchID).Scan(&programID, &programType, &brandName, &branchName, &profile)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return model.GiftCardBatch{}, ErrNotFound
 	}
 	if err != nil {
 		return model.GiftCardBatch{}, err
 	}
+	socialLinks := make([]model.GiftCardSocialLink, 0, len(req.SocialNetworks))
+	for _, network := range req.SocialNetworks {
+		if profile == nil {
+			return model.GiftCardBatch{}, ErrGiftCardSocialUnavailable
+		}
+		link := strings.TrimSpace(profile.Links[network])
+		if link == "" {
+			return model.GiftCardBatch{}, ErrGiftCardSocialUnavailable
+		}
+		socialLinks = append(socialLinks, model.GiftCardSocialLink{Network: network, URL: link})
+	}
 	id := uuid.New()
 	now := r.Now().UTC()
-	_, err = tx.Exec(ctx, `INSERT INTO gift_card_batches(id,marca_id,sucursal_id,programa_id,creado_por,titulo,programa_tipo,cantidad,total_codigos,expires_at,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, id, brandID, req.BranchID, programID, actorID, strings.TrimSpace(req.Title), programType, req.Amount, req.Quantity, req.ExpiresAt, now)
+	_, err = tx.Exec(ctx, `INSERT INTO gift_card_batches(id,marca_id,sucursal_id,programa_id,creado_por,titulo,programa_tipo,cantidad,total_codigos,expires_at,created_at,social_links) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)`, id, brandID, req.BranchID, programID, actorID, strings.TrimSpace(req.Title), programType, req.Amount, req.Quantity, req.ExpiresAt, now, socialLinks)
 	if err != nil {
 		return model.GiftCardBatch{}, err
 	}
@@ -57,12 +69,12 @@ func (r *Repository) CreateGiftCardBatch(ctx context.Context, actorID, brandID i
 	if err = tx.Commit(ctx); err != nil {
 		return model.GiftCardBatch{}, normalize(err)
 	}
-	return model.GiftCardBatch{ID: id.String(), BrandID: brandID, BrandName: brandName, BranchID: req.BranchID, BranchName: branchName, Title: strings.TrimSpace(req.Title), ProgramType: programType, Amount: req.Amount, Quantity: req.Quantity, Status: "ACTIVA", ExpiresAt: req.ExpiresAt, CreatedAt: now, Codes: codes}, nil
+	return model.GiftCardBatch{ID: id.String(), BrandID: brandID, BrandName: brandName, BranchID: req.BranchID, BranchName: branchName, Title: strings.TrimSpace(req.Title), ProgramType: programType, Amount: req.Amount, Quantity: req.Quantity, Status: "ACTIVA", ExpiresAt: req.ExpiresAt, CreatedAt: now, Codes: codes, SocialLinks: socialLinks}, nil
 }
 
 func (r *Repository) GiftCardBatch(ctx context.Context, actorID, brandID int64, batchID, claimBase string) (model.GiftCardBatch, error) {
 	var batch model.GiftCardBatch
-	err := r.Pool.QueryRow(ctx, `SELECT b.id,b.marca_id,m.nombre,b.sucursal_id,s.nombre,b.titulo,b.programa_tipo,b.cantidad,b.total_codigos,count(c.redeemed_at),b.estado,b.expires_at,b.created_at
+	err := r.Pool.QueryRow(ctx, `SELECT b.id,b.marca_id,m.nombre,b.sucursal_id,s.nombre,b.titulo,b.programa_tipo,b.cantidad,b.total_codigos,count(c.redeemed_at),b.estado,b.expires_at,b.created_at,b.social_links
 		FROM gift_card_batches b
 		JOIN marcas m ON m.id=b.marca_id
 		JOIN sucursales s ON s.id=b.sucursal_id
@@ -70,7 +82,7 @@ func (r *Repository) GiftCardBatch(ctx context.Context, actorID, brandID int64, 
 		LEFT JOIN gift_card_codes c ON c.batch_id=b.id
 		WHERE b.marca_id=$2 AND b.id=$3 AND b.deleted_at IS NULL
 		GROUP BY b.id,m.nombre,s.nombre`, actorID, brandID, batchID).
-		Scan(&batch.ID, &batch.BrandID, &batch.BrandName, &batch.BranchID, &batch.BranchName, &batch.Title, &batch.ProgramType, &batch.Amount, &batch.Quantity, &batch.RedeemedCount, &batch.Status, &batch.ExpiresAt, &batch.CreatedAt)
+		Scan(&batch.ID, &batch.BrandID, &batch.BrandName, &batch.BranchID, &batch.BranchName, &batch.Title, &batch.ProgramType, &batch.Amount, &batch.Quantity, &batch.RedeemedCount, &batch.Status, &batch.ExpiresAt, &batch.CreatedAt, &batch.SocialLinks)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return batch, ErrNotFound
 	}

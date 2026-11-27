@@ -17,6 +17,7 @@ var (
 	ErrPreviewExpired             = errors.New("preview expired")
 	ErrPreviewConsumed            = errors.New("preview consumed")
 	ErrGiftCardUnavailable        = errors.New("gift card unavailable")
+	ErrGiftCardSocialUnavailable  = errors.New("gift card social link unavailable")
 	ErrPreviewChanged             = errors.New("preview changed")
 	ErrInsufficientBalance        = errors.New("insufficient balance")
 	ErrInvalidRequest             = errors.New("invalid request")

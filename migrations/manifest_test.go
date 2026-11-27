@@ -7,8 +7,8 @@ import (
 )
 
 func TestManifestSupportsReservedVersions(t *testing.T) {
-	got, err := VersionsThrough("0054")
-	if err != nil || len(got) != 54 || got[len(got)-1] != "0054" || !slices.Contains(got, "0035") || !sort.StringsAreSorted(got) {
+	got, err := VersionsThrough("0055")
+	if err != nil || len(got) != 55 || got[len(got)-1] != "0055" || !slices.Contains(got, "0035") || !sort.StringsAreSorted(got) {
 		t.Fatalf("manifest=%v err=%v", got, err)
 	}
 	legacy, err := VersionsThrough("0022")

@@ -18,6 +18,11 @@ func (s *Service) CreateGiftCardBatch(ctx context.Context, actorID, brandID int6
 	if req.Title == "" || len([]rune(req.Title)) > 80 || req.BranchID < 1 || req.Amount < 1 || req.Amount > 100000 || req.Quantity < 1 || req.Quantity > 100 {
 		return model.GiftCardBatch{}, ErrInvalidRequest
 	}
+	socialNetworks, err := orderGiftCardSocialNetworks(req.SocialNetworks)
+	if err != nil {
+		return model.GiftCardBatch{}, err
+	}
+	req.SocialNetworks = socialNetworks
 	if req.ExpiresAt != nil {
 		value := req.ExpiresAt.UTC()
 		if !value.After(s.Now().UTC().Add(time.Minute)) {
@@ -36,6 +41,27 @@ func (s *Service) CreateGiftCardBatch(ctx context.Context, actorID, brandID int6
 		tokens = append(tokens, repository.GiftCardToken{ID: uuid.NewString(), Token: token, Hint: token[len(token)-6:], Hash: hash})
 	}
 	return s.Repo.CreateGiftCardBatch(ctx, actorID, brandID, req, tokens, s.Config.PublicAppURL)
+}
+
+func orderGiftCardSocialNetworks(networks []string) ([]string, error) {
+	supported := [...]string{"instagram", "tiktok", "facebook", "linkedin"}
+	if len(networks) > len(supported) {
+		return nil, ErrInvalidRequest
+	}
+	requested := make(map[string]bool, len(networks))
+	for _, network := range networks {
+		requested[network] = true
+	}
+	ordered := make([]string, 0, len(networks))
+	for _, network := range supported {
+		if requested[network] {
+			ordered = append(ordered, network)
+		}
+	}
+	if len(ordered) != len(networks) {
+		return nil, ErrInvalidRequest
+	}
+	return ordered, nil
 }
 
 func (s *Service) ListGiftCardBatches(ctx context.Context, actorID, brandID int64) ([]model.GiftCardBatch, error) {

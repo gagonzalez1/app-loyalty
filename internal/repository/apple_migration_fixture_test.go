@@ -10,7 +10,7 @@ import (
 // Only fixture migrations are rolled back; operational rollback gates stay intact.
 func rollbackAppleMigrationFixture(t *testing.T, p *pgxpool.Pool) {
 	t.Helper()
-	for _, name := range []string{"0054_gift_card_batch_deletion", "0053_gift_card_insights", "0052_gift_cards", "0051_schema_reconciliation_log", "0050_apple_browser_identity", "0049_google_browser_flows", "0048_branch_menu_languages", "0047_branch_pdf_no_page_cap", "0046_branch_public_profile", "0045_apple_billing", "0044_apple_identity"} {
+	for _, name := range []string{"0055_gift_card_social_links", "0054_gift_card_batch_deletion", "0053_gift_card_insights", "0052_gift_cards", "0051_schema_reconciliation_log", "0050_apple_browser_identity", "0049_google_browser_flows", "0048_branch_menu_languages", "0047_branch_pdf_no_page_cap", "0046_branch_public_profile", "0045_apple_billing", "0044_apple_identity"} {
 		var applied bool
 		if err := p.QueryRow(t.Context(), `SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=$1)`, name[:4]).Scan(&applied); err != nil {
 			t.Fatal(err)

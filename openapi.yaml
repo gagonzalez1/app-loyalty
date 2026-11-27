@@ -1290,6 +1290,66 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /marcas/{brand_id}/gift-cards:
+    parameters: [{ $ref: '#/components/parameters/BrandId' }]
+    get:
+      tags: [Marcas]
+      operationId: listGiftCardBatches
+      summary: Lista los lotes de Gift Cards de la marca
+      x-puntazo-implementation: IMPLEMENTED
+      responses:
+        '200':
+          description: Lotes sin códigos ni enlaces de impresión
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/GiftCardBatch' } }
+                  request_id: { $ref: '#/components/schemas/RequestId' }
+    post:
+      tags: [Marcas]
+      operationId: createGiftCardBatch
+      summary: Crea un lote de Gift Cards para una sucursal
+      x-puntazo-implementation: IMPLEMENTED
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GiftCardCreateRequest' }
+      responses:
+        '201':
+          description: Lote creado con los enlaces públicos seleccionados de la sucursal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GiftCardBatchEnvelope' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: GIFT_CARD_SOCIAL_UNAVAILABLE si una red seleccionada ya no está publicada en la sucursal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /marcas/{brand_id}/gift-cards/{batch_id}:
+    parameters:
+      - $ref: '#/components/parameters/BrandId'
+      - { name: batch_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Marcas]
+      operationId: getGiftCardBatch
+      summary: Consulta un lote para ver sus canjes y reimprimir los códigos disponibles
+      x-puntazo-implementation: IMPLEMENTED
+      responses:
+        '200':
+          description: Lote con la selección de redes guardada al crearlo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GiftCardBatchEnvelope' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /marcas/{brand_id}/movimientos:
     get:
       tags: [Movimientos]
@@ -3727,6 +3787,76 @@ components:
         version: { type: string }
         commit: { type: string, pattern: '^[0-9a-f]{7,40}$' }
         schema_version: { type: string, pattern: '^[0-9]{4}$' }
+    GiftCardSocialNetwork:
+      type: string
+      enum: [instagram, tiktok, facebook, linkedin]
+    GiftCardCreateRequest:
+      type: object
+      required: [title, branch_id, amount, quantity]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 80 }
+        branch_id: { type: integer, minimum: 1 }
+        amount: { type: integer, minimum: 1, maximum: 100000 }
+        quantity: { type: integer, minimum: 1, maximum: 100 }
+        expires_at: { type: string, format: date-time }
+        social_networks:
+          type: array
+          maxItems: 4
+          uniqueItems: true
+          description: Redes a imprimir. Los enlaces se toman del perfil público de la sucursal asignada al lote.
+          items: { $ref: '#/components/schemas/GiftCardSocialNetwork' }
+    GiftCardBatch:
+      type: object
+      required: [id, brand_id, branch_id, title, program_type, amount, quantity, redeemed_count, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        brand_id: { type: integer }
+        brand_name: { type: string }
+        branch_id: { type: integer }
+        branch_name: { type: string }
+        title: { type: string }
+        program_type: { type: string, enum: [SELLOS, PUNTOS] }
+        amount: { type: integer }
+        quantity: { type: integer }
+        redeemed_count: { type: integer }
+        status: { type: string, enum: [ACTIVA, REVOCADA] }
+        expires_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        codes:
+          type: array
+          items:
+            type: object
+            required: [id, token_hint, redeemed]
+            properties:
+              id: { type: string, format: uuid }
+              token: { type: string }
+              claim_url: { type: string, format: uri }
+              token_hint: { type: string }
+              redeemed: { type: boolean }
+              redeemed_at: { type: string, format: date-time }
+              redeemer:
+                type: object
+                required: [user_code, name, email]
+                properties:
+                  user_code: { type: string }
+                  name: { type: string }
+                  email: { type: string, format: email }
+        social_links:
+          type: array
+          maxItems: 4
+          description: Copia guardada al crear el lote, disponible en el detalle y en la respuesta de creación.
+          items:
+            type: object
+            required: [network, url]
+            properties:
+              network: { $ref: '#/components/schemas/GiftCardSocialNetwork' }
+              url: { type: string, format: uri }
+    GiftCardBatchEnvelope:
+      type: object
+      required: [data, request_id]
+      properties:
+        data: { $ref: '#/components/schemas/GiftCardBatch' }
+        request_id: { $ref: '#/components/schemas/RequestId' }
     ErrorEnvelope:
       type: object
       additionalProperties: false
@@ -3739,7 +3869,7 @@ components:
           properties:
             code:
               type: string
-              enum: [PRECONDITION_REQUIRED, MENU_PDF_TOO_LARGE, MENU_PDF_TYPE_UNSUPPORTED, MENU_PDF_INVALID, MENU_PDF_PASSWORD_PROTECTED, MENU_STORAGE_UNAVAILABLE, INVALID_REQUEST, REGISTRATION_PROFILE_REQUIRED, REFERRAL_CODE_INVALID, ACCOUNT_TYPE_REQUIRED, IDENTITY_TOKEN_INVALID, INVITATION_INVALID, INVITATION_EMAIL_MISMATCH, SELF_ROLE_CHANGE_FORBIDDEN, EMAIL_VERIFICATION_REQUIRED, UNAUTHENTICATED, RECENT_AUTH_REQUIRED, FORBIDDEN, NOT_FOUND, EMAIL_EXISTS, RESOURCE_CONFLICT, PROGRAM_TYPE_HAS_BENEFITS, PROGRAM_TYPE_IMMUTABLE, IDEMPOTENCY_CONFLICT, IDEMPOTENCY_IN_PROGRESS, PREVIEW_EXPIRED, PREVIEW_CONSUMED, PREVIEW_CHANGED, PRECONDITION_FAILED, BILLING_IN_PROGRESS, BILLING_UNAVAILABLE, BILLING_PROVIDER_ERROR, INSUFFICIENT_BALANCE, DEMO_SIGNUP_DISABLED, DEMO_ACCESS_DENIED, MEDIA_TOO_LARGE, MEDIA_TYPE_UNSUPPORTED, MEDIA_STORAGE_UNAVAILABLE, RATE_LIMITED, DEPENDENCY_UNAVAILABLE, INTERNAL_ERROR]
+              enum: [PRECONDITION_REQUIRED, MENU_PDF_TOO_LARGE, MENU_PDF_TYPE_UNSUPPORTED, MENU_PDF_INVALID, MENU_PDF_PASSWORD_PROTECTED, MENU_STORAGE_UNAVAILABLE, INVALID_REQUEST, REGISTRATION_PROFILE_REQUIRED, REFERRAL_CODE_INVALID, ACCOUNT_TYPE_REQUIRED, IDENTITY_TOKEN_INVALID, INVITATION_INVALID, INVITATION_EMAIL_MISMATCH, SELF_ROLE_CHANGE_FORBIDDEN, EMAIL_VERIFICATION_REQUIRED, UNAUTHENTICATED, RECENT_AUTH_REQUIRED, FORBIDDEN, NOT_FOUND, EMAIL_EXISTS, RESOURCE_CONFLICT, PROGRAM_TYPE_HAS_BENEFITS, PROGRAM_TYPE_IMMUTABLE, IDEMPOTENCY_CONFLICT, IDEMPOTENCY_IN_PROGRESS, PREVIEW_EXPIRED, PREVIEW_CONSUMED, PREVIEW_CHANGED, GIFT_CARD_SOCIAL_UNAVAILABLE, PRECONDITION_FAILED, BILLING_IN_PROGRESS, BILLING_UNAVAILABLE, BILLING_PROVIDER_ERROR, INSUFFICIENT_BALANCE, DEMO_SIGNUP_DISABLED, DEMO_ACCESS_DENIED, MEDIA_TOO_LARGE, MEDIA_TYPE_UNSUPPORTED, MEDIA_STORAGE_UNAVAILABLE, RATE_LIMITED, DEPENDENCY_UNAVAILABLE, INTERNAL_ERROR]
             message: { type: string }
             details: { type: object, additionalProperties: true }
         request_id: { $ref: '#/components/schemas/RequestId' }
