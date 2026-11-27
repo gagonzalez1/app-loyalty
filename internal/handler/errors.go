@@ -144,6 +144,8 @@ func writeErr(c *gin.Context, err error) {
 		web.Error(c, http.StatusConflict, "PREVIEW_CONSUMED", "La preview ya fue consumida", nil)
 	case errors.Is(err, repository.ErrGiftCardUnavailable):
 		web.Error(c, http.StatusConflict, "GIFT_CARD_UNAVAILABLE", "La Gift Card venció, fue revocada o ya se utilizó", nil)
+	case errors.Is(err, repository.ErrGiftCardSocialUnavailable):
+		web.Error(c, http.StatusConflict, "GIFT_CARD_SOCIAL_UNAVAILABLE", "Una de las redes elegidas ya no está disponible. Revisá tu selección.", nil)
 	case errors.Is(err, repository.ErrPreviewChanged):
 		web.Error(c, http.StatusConflict, "PREVIEW_CHANGED", "La preview ya no coincide con el estado actual", nil)
 	case errors.Is(err, repository.ErrInsufficientBalance):

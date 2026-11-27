@@ -312,3 +312,13 @@ Agrega una baja lógica a los lotes. El comercio puede retirarlos de su lista y
 los QR pendientes dejan de estar disponibles, mientras los canjes y movimientos
 ya realizados se conservan para auditoría. Publicar la API con
 `EXPECTED_SCHEMA_VERSION=0054` después de aplicar 0053 y 0054.
+
+### 0055 · Redes elegidas para imprimir Gift Cards
+
+Agrega `gift_card_batches.social_links` para conservar los enlaces públicos
+elegidos al crear el lote. Los lotes existentes tienen una lista vacía. Una
+reimpresión usa los valores guardados aunque el comercio actualice su perfil.
+
+Configurar `EXPECTED_SCHEMA_VERSION=0055` después de aplicar la migración. Si
+hace falta revertir la aplicación, usar una imagen compatible con el manifiesto
+0055 y conservar las selecciones. El DOWN elimina las selecciones de redes.

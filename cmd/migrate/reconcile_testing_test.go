@@ -175,7 +175,7 @@ func TestReconcileTestingApple0045PreservesDataHistoryAndOIDs(t *testing.T) {
 		}
 	}
 	t.Setenv("ALLOW_MIGRATION_DOWN", "true")
-	for _, version := range []string{"0054", "0053", "0052"} {
+	for _, version := range []string{"0055", "0054", "0053", "0052"} {
 		if err := run(t.Context(), p, "down", "../../migrations"); err != nil {
 			t.Fatalf("down %s before reconciliation boundary: %v", version, err)
 		}
@@ -232,7 +232,7 @@ func TestReconcileTestingApple0045EnvironmentAndCanonicalUpgrade(t *testing.T) {
 	if err := run(t.Context(), p, "up", "../../migrations"); err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.New(p).CheckSchema(t.Context(), "0054"); err != nil {
+	if err := repository.New(p).CheckSchema(t.Context(), "0055"); err != nil {
 		t.Fatal(err)
 	}
 	var n int
@@ -278,7 +278,7 @@ func TestReconcileTestingApple0045EmptyDatabaseUpgrade(t *testing.T) {
 	if err := run(t.Context(), p, "up", "../../migrations"); err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.New(p).CheckSchema(t.Context(), "0054"); err != nil {
+	if err := repository.New(p).CheckSchema(t.Context(), "0055"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := migrations.ReadSource("0051_schema_reconciliation_log.up.sql"); err != nil {
